@@ -1,0 +1,15 @@
+# Ignore local SDK and temp build tools
+android-sdk/
+temp_platform_34/
+app-debug.apk
+
+# Ignore iOS submodule/repository (it has its own git)
+bitchat/
+
+# Ignore Android build cache and secrets
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.cxx/
+android/captures/
