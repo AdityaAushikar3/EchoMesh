@@ -1,0 +1,123 @@
+package chat.bitchat.data.database
+
+import androidx.room.*
+import kotlinx.coroutines.flow.Flow
+
+@Dao
+interface UserProfileDao {
+    @Query("SELECT * FROM user_profile WHERE id = 1 LIMIT 1")
+    fun getProfile(): Flow<UserProfile?>
+
+    @Query("SELECT * FROM user_profile WHERE id = 1 LIMIT 1")
+    suspend fun getProfileDirect(): UserProfile?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertOrUpdateProfile(profile: UserProfile)
+}
+
+@Dao
+interface PeerDao {
+    @Query("SELECT * FROM peers ORDER BY lastSeen DESC")
+    fun getAllPeers(): Flow<List<Peer>>
+
+    @Query("SELECT * FROM peers ORDER BY lastSeen DESC")
+    suspend fun getAllPeersDirect(): List<Peer>
+
+    @Query("DELETE FROM peers WHERE peerID LIKE '%:%' OR peerID NOT LIKE 'dev_%'")
+    suspend fun deleteLegacyPeers()
+
+    @Query("SELECT * FROM peers WHERE peerID = :peerId LIMIT 1")
+    fun getPeerById(peerId: String): Flow<Peer?>
+
+    @Query("SELECT * FROM peers WHERE peerID = :peerId LIMIT 1")
+    suspend fun getPeerByIdDirect(peerId: String): Peer?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPeer(peer: Peer)
+
+    @Query("UPDATE peers SET nickname = :nickname, lastSeen = :lastSeen WHERE peerID = :peerId")
+    suspend fun updatePeerPresence(peerId: String, nickname: String, lastSeen: Long)
+
+    @Query("UPDATE peers SET bio = :bio, interests = :interests, favoriteMovies = :movies, favoriteMusic = :music, singers = :singers, career = :career WHERE peerID = :peerId")
+    suspend fun updatePeerProfile(
+        peerId: String,
+        bio: String,
+        interests: String,
+        movies: String,
+        music: String,
+        singers: String,
+        career: String
+    )
+
+    @Transaction
+    suspend fun upsertPeerPresence(peerId: String, nickname: String, lastSeen: Long) {
+        val existing = getPeerByIdDirect(peerId)
+        if (existing != null) {
+            updatePeerPresence(peerId, nickname, lastSeen)
+        } else {
+            insertPeer(Peer(peerID = peerId, nickname = nickname, trustLevel = "Casual", lastSeen = lastSeen))
+        }
+    }
+
+    @Delete
+    suspend fun deletePeer(peer: Peer)
+}
+
+@Dao
+interface MessageDao {
+    @Query("SELECT * FROM messages ORDER BY timestamp ASC")
+    fun getAllMessages(): Flow<List<MessageEntity>>
+
+    @Query(
+        """
+        SELECT * FROM messages
+        WHERE isPrivate = 1 AND (
+            (sender IN (:selfIdentifiers) AND (recipientNickname = :conversationId OR recipientNickname = :fallbackName))
+            OR
+            ((sender = :conversationId OR sender = :fallbackName) AND recipientNickname IN (:selfIdentifiers))
+        )
+        ORDER BY timestamp ASC
+        """
+    )
+    fun getPrivateMessagesForConversation(
+        conversationId: String,
+        fallbackName: String,
+        selfIdentifiers: List<String>
+    ): Flow<List<MessageEntity>>
+
+    @Query("SELECT * FROM messages WHERE (sender = :peerId OR recipientNickname = :peerId) AND isPrivate = 1 ORDER BY timestamp ASC")
+    fun getPrivateMessagesForPeer(peerId: String): Flow<List<MessageEntity>>
+
+    @Query("SELECT * FROM messages WHERE isPrivate = 0 ORDER BY timestamp ASC")
+    fun getPublicMessages(): Flow<List<MessageEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertMessage(message: MessageEntity)
+
+    @Query("UPDATE messages SET deliveryStatus = :status WHERE id = :id")
+    suspend fun updateDeliveryStatus(id: String, status: String)
+
+    @Query("DELETE FROM messages")
+    suspend fun clearAllMessages()
+
+    @Query("DELETE FROM messages WHERE sender LIKE '%:%' OR recipientNickname LIKE '%:%' OR conversationId LIKE '%:%' OR (isPrivate = 1 AND conversationId NOT LIKE 'dev_%')")
+    suspend fun deleteLegacyMessages()
+
+    @Query(
+        """
+        DELETE FROM messages WHERE isPrivate = 1 AND (
+            (sender IN (:selfIdentifiers) AND (recipientNickname = :conversationId OR recipientNickname = :fallbackName))
+            OR
+            ((sender = :conversationId OR sender = :fallbackName) AND recipientNickname IN (:selfIdentifiers))
+        )
+        """
+    )
+    suspend fun deleteMessagesForConversation(
+        conversationId: String,
+        fallbackName: String,
+        selfIdentifiers: List<String>
+    )
+
+    @Query("DELETE FROM messages WHERE (sender = :peerId OR recipientNickname = :peerId) AND isPrivate = 1")
+    suspend fun deleteMessagesForPeer(peerId: String)
+}
