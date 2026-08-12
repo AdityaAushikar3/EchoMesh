@@ -470,10 +470,15 @@ class BLEMeshManager @Inject constructor(
 
     fun stopAdvertising() {
         _isAdvertising.value = false
-        if (advertiseCallback != null && checkBluetoothState()) {
+        val cb = advertiseCallback  // capture locally to avoid race condition
+        if (cb != null && checkBluetoothState()) {
             try {
-                bluetoothAdapter?.bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback)
+                bluetoothAdapter?.bluetoothLeAdvertiser?.stopAdvertising(cb)
             } catch (_: SecurityException) {
+            } catch (_: IllegalArgumentException) {
+                // Some vendors (e.g. Vivo) throw this when the internal advertiser
+                // callback state is inconsistent. Safe to ignore — advertising is
+                // already stopping.
             }
         }
         advertiseCallback = null
