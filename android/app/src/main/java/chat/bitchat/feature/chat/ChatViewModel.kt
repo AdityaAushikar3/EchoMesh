@@ -38,7 +38,13 @@ class ChatViewModel @Inject constructor(
 ) : ViewModel() {
 
     /** Route arg — preferably BLE MAC; may be a legacy nickname. */
-    val peerId: String = decodePeerRouteId(savedStateHandle.get<String>("peerId") ?: "")
+    val peerId: String = (decodePeerRouteId(savedStateHandle.get<String>("peerId") ?: "")).also {
+        try {
+            android.util.Log.d("ChatViewModel", "[IDENTITY_TRACE] finalChatPeerId=$it")
+        } catch (_: Throwable) {
+            println("ChatViewModel: [IDENTITY_TRACE] finalChatPeerId=$it")
+        }
+    }
 
     private val messageDao = database.messageDao()
     private val peerDao = database.peerDao()
