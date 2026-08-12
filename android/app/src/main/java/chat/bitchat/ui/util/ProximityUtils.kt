@@ -104,17 +104,33 @@ fun NearbyDevice.displayName(): String {
     ) name else "Nearby"
 }
 
-/** Stable chat key — always the nickname so MAC rotation doesn't break history. */
-fun NearbyDevice.chatKey(): String =
-    if (identity.startsWith("dev_")) identity
-    else if (name.startsWith("Nearby ")) id
-    else name
+/** Stable chat key — always the stable identity (dev_*) when available. */
+fun NearbyDevice.chatKey(): String {
+    val key = if (identity.startsWith("dev_")) identity
+              else if (name.startsWith("Nearby ")) id
+              else name
+    android.util.Log.d("ProximityUtils", "[IDENTITY_TRACE] chatKey identity=$identity output=$key")
+    return key
+}
 
-/** Safe nav path segment (colons break Compose Navigation path args). */
-fun encodePeerRouteId(raw: String): String = raw.replace(":", "_")
+/**
+ * Safe nav path segment: colons in BLE MACs (AA:BB:CC:DD:EE:FF) break
+ * Compose Navigation route args, so we encode ONLY actual MACs.
+ * Stable identities (dev_*) and nicknames pass through unchanged.
+ * No android.util.Log here — these are pure functions called in unit tests.
+ */
+private val BLE_MAC_REGEX = Regex("^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
+
+fun encodePeerRouteId(raw: String): String =
+    if (BLE_MAC_REGEX.matches(raw)) raw.replace(":", "|") else raw
 
 fun decodePeerRouteId(encoded: String): String =
-    if (encoded.contains("_") && !encoded.contains(":")) encoded.replace("_", ":") else encoded
+    // Only decode pipe-separated MACs produced by encodePeerRouteId above.
+    // dev_* identities and plain nicknames are returned unchanged.
+    if (encoded.matches(Regex("^([0-9A-Fa-f]{2}\\|){5}[0-9A-Fa-f]{2}$")))
+        encoded.replace("|", ":")
+    else
+        encoded
 
 
 fun stableAngle(id: String, index: Int, total: Int): Float {
