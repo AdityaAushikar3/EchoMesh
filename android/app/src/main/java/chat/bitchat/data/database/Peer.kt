@@ -14,5 +14,6 @@ data class Peer(
     val favoriteMovies: String = "",
     val favoriteMusic: String = "",
     val singers: String = "",
-    val career: String = ""
+    val career: String = "",
+    val publicKey: String? = null
 )

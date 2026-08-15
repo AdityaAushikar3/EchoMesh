@@ -49,6 +49,9 @@ interface PeerDao {
         career: String
     )
 
+    @Query("UPDATE peers SET publicKey = :publicKey WHERE peerID = :peerId")
+    suspend fun updatePeerPublicKey(peerId: String, publicKey: String)
+
     @Transaction
     suspend fun upsertPeerPresence(peerId: String, nickname: String, lastSeen: Long) {
         val existing = getPeerByIdDirect(peerId)
@@ -88,13 +91,27 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE (sender = :peerId OR recipientNickname = :peerId) AND isPrivate = 1 ORDER BY timestamp ASC")
     fun getPrivateMessagesForPeer(peerId: String): Flow<List<MessageEntity>>
 
+    @Query("""
+        SELECT m.* FROM messages m
+        INNER JOIN (
+            SELECT conversationId, MAX(timestamp) AS maxTs
+            FROM messages
+            WHERE isPrivate = 1
+            GROUP BY conversationId
+        ) latest ON m.conversationId = latest.conversationId
+            AND m.timestamp = latest.maxTs
+        WHERE m.isPrivate = 1
+        ORDER BY m.timestamp DESC
+    """)
+    fun getLatestMessagePerConversation(): Flow<List<MessageEntity>>
+
     @Query("SELECT * FROM messages WHERE isPrivate = 0 ORDER BY timestamp ASC")
     fun getPublicMessages(): Flow<List<MessageEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMessage(message: MessageEntity)
 
-    @Query("UPDATE messages SET deliveryStatus = :status WHERE id = :id")
+    @Query("UPDATE messages SET deliveryStatus = :status WHERE id = :id AND (deliveryStatus != 'delivered' OR :status = 'delivered')")
     suspend fun updateDeliveryStatus(id: String, status: String)
 
     @Query("DELETE FROM messages")

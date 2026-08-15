@@ -45,9 +45,9 @@ object CompressionUtil {
     fun shouldCompress(data: ByteArray): Boolean {
         if (data.size <= COMPRESSION_THRESHOLD_BYTES) return false
 
-        val uniqueByteCount = data.toSet().size
-        val sampleSize = minOf(data.size, 256)
-        val uniqueByteRatio = uniqueByteCount.toDouble() / sampleSize.toDouble()
+        val sample = data.take(256)
+        val uniqueByteCount = sample.toSet().size
+        val uniqueByteRatio = uniqueByteCount.toDouble() / sample.size.toDouble()
         return uniqueByteRatio < 0.9
     }
 }

@@ -7,6 +7,7 @@ import chat.bitchat.data.database.MessageEntity
 import chat.bitchat.data.database.Peer
 import chat.bitchat.protocol.BitchatMessage
 import chat.bitchat.protocol.BitchatPacket
+import chat.bitchat.protocol.DeliveryAckPayload
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -85,6 +86,11 @@ class MessageRouter @Inject constructor(
                         "MessageRouter",
                         "Packet from $senderAddress is for us. type=${packet.type} payload=${packet.payload.size}"
                     )
+                    // Handle delivery ACKs
+                    if (packet.type == BLEMeshManager.TYPE_DELIVERY_ACK) {
+                        handleDeliveryAck(packet)
+                        return@collect
+                    }
                     if (packet.type == 0x05.toByte()) {
                         Log.i("MessageRouter", "Processing profile metadata packet from $senderAddress")
                         try {
@@ -116,6 +122,11 @@ class MessageRouter @Inject constructor(
                                 singers = singers,
                                 career = career
                             )
+                            val pubKeyStr = json.optString("publicKey", "").takeIf { it.isNotBlank() }
+                            if (pubKeyStr != null) {
+                                peerDao.updatePeerPublicKey(identity, pubKeyStr)
+                                Log.i("MessageRouter", "[E2EE] Stored public key for $identity")
+                            }
                             Log.i("MessageRouter", "Stored profile details for $identity")
                         } catch (e: Exception) {
                             Log.e("MessageRouter", "Failed to parse profile payload", e)
@@ -180,11 +191,32 @@ class MessageRouter @Inject constructor(
                         return@collect
                     }
 
+                    val finalContent = if (message.isPrivate && message.content.startsWith(chat.bitchat.core.security.CryptoUtil.E2EE_PREFIX)) {
+                        val senderPeer = peerDao.getPeerByIdDirect(senderStableId)
+                        val senderPubKeyBytes = senderPeer?.publicKey?.let { android.util.Base64.decode(it, android.util.Base64.NO_WRAP) }
+                        val myPrivateKey = chat.bitchat.core.security.KeyManager.getPrivateKey()
+                        if (senderPubKeyBytes != null && myPrivateKey != null) {
+                            val decrypted = chat.bitchat.core.security.CryptoUtil.decrypt(message.content, senderStableId, myPrivateKey, senderPubKeyBytes)
+                            if (decrypted != null) {
+                                Log.i("MessageRouter", "[E2EE] Decrypted incoming message from $senderStableId")
+                                decrypted
+                            } else {
+                                Log.e("MessageRouter", "[E2EE] Failed to decrypt message from $senderStableId")
+                                "[Encrypted Message]"
+                            }
+                        } else {
+                            Log.w("MessageRouter", "[E2EE] Missing sender public key or local private key for $senderStableId")
+                            "[Encrypted Message]"
+                        }
+                    } else {
+                        message.content
+                    }
+
                     messageDao.insertMessage(
                         MessageEntity(
                             id = message.id,
                             sender = senderStableId,
-                            content = message.content,
+                            content = finalContent,
                             timestamp = message.timestamp,
                             isPrivate = message.isPrivate,
                             recipientNickname = message.recipientNickname,
@@ -194,6 +226,15 @@ class MessageRouter @Inject constructor(
                             deliveryStatus = "received"
                         )
                     )
+
+                    // Send delivery ACK back to sender for private messages
+                    if (message.isPrivate) {
+                        sendDeliveryAck(
+                            originalMessageId = message.id,
+                            originalSenderHash = packet.senderID
+                        )
+                    }
+
                     val inboundName = message.sender.takeIf {
                         it.isNotBlank() && !it.contains(":") && !it.startsWith("Nearby ")
                     }
@@ -307,10 +348,26 @@ class MessageRouter @Inject constructor(
                 )
             }
 
+            val recipientPeer = if (isPrivate) peerDao.getPeerByIdDirect(targetIdentity) else null
+            val recipientPubKeyBytes = recipientPeer?.publicKey?.let { android.util.Base64.decode(it, android.util.Base64.NO_WRAP) }
+            val myPrivateKey = if (isPrivate) chat.bitchat.core.security.KeyManager.getPrivateKey() else null
+
+            val wireContent = if (isPrivate && recipientPubKeyBytes != null && myPrivateKey != null) {
+                val encrypted = chat.bitchat.core.security.CryptoUtil.encrypt(content, targetIdentity, myPrivateKey, recipientPubKeyBytes)
+                if (encrypted != null) {
+                    Log.i("MessageRouter", "[E2EE] Encrypted message for targetIdentity=$targetIdentity")
+                    encrypted
+                } else {
+                    content
+                }
+            } else {
+                content
+            }
+
             val message = BitchatMessage(
                 id = messageId,
                 sender = senderName,
-                content = content,
+                content = wireContent,
                 timestamp = timestamp,
                 isRelay = false,
                 isPrivate = isPrivate,
@@ -343,6 +400,44 @@ class MessageRouter @Inject constructor(
                 callback(success)
             }
         }
+    }
+
+    private fun sendDeliveryAck(originalMessageId: String, originalSenderHash: ByteArray) {
+        val ackPayload = DeliveryAckPayload(
+            messageId = originalMessageId,
+            acknowledgedAt = System.currentTimeMillis()
+        ).toBytes()
+
+        val myPeerIdHash = getMockPeerID(bleMeshManager.localIdentity)
+
+        val ackPacket = BitchatPacket(
+            version = 2,
+            type = BLEMeshManager.TYPE_DELIVERY_ACK,
+            senderID = myPeerIdHash,
+            recipientID = originalSenderHash,
+            timestamp = System.currentTimeMillis() / 1000,
+            payload = ackPayload,
+            signature = null,
+            ttl = 4,
+            route = null,
+            isRSR = false
+        )
+
+        scope.launch {
+            delay((10L..50L).random())  // Jitter to prevent BLE collisions
+            bleMeshManager.relayPacket("", ackPacket)
+            Log.i("MessageRouter", "Sent delivery ACK for messageId=$originalMessageId")
+        }
+    }
+
+    private suspend fun handleDeliveryAck(packet: BitchatPacket) {
+        val ack = DeliveryAckPayload.fromBytes(packet.payload)
+        if (ack == null) {
+            Log.e("MessageRouter", "Failed to decode ACK payload")
+            return
+        }
+        Log.i("MessageRouter", "Received delivery ACK for messageId=${ack.messageId}")
+        messageDao.updateDeliveryStatus(ack.messageId, "delivered")
     }
 
     private fun isGenericNickname(name: String): Boolean {

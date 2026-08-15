@@ -68,7 +68,9 @@ class DiscoverViewModel @Inject constructor(
         val peerByNameMap = peers.filter { it.nickname.isNotBlank() }.associateBy { it.nickname.lowercase() }
 
         val items = devices.map { device ->
-            val peer = peerByIdMap[device.id.lowercase()] ?: peerByNameMap[device.name.lowercase()]
+            val peer = peerByIdMap[device.identity.lowercase()]
+                ?: peerByIdMap[device.id.lowercase()]
+                ?: peerByNameMap[device.name.lowercase()]
             val theirInterests = peer?.let {
                 val cacheKey = "${it.peerID}-${it.interests}-${it.favoriteMusic}-${it.favoriteMovies}-${it.singers}-${it.career}"
                 val interestsStr = listOfNotNull(

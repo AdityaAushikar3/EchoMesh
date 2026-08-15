@@ -507,6 +507,7 @@ class BLEMeshManager @Inject constructor(
             try {
                 val profile = database.userProfileDao().getProfileDirect() ?: return@launch
                 val json = org.json.JSONObject().apply {
+                    put("identity", localIdentity)
                     put("nickname", profile.name)
                     put("bio", profile.bio)
                     put("interests", profile.interests)
@@ -514,11 +515,17 @@ class BLEMeshManager @Inject constructor(
                     put("movies", profile.favoriteMovies)
                     put("singers", profile.singers)
                     put("career", profile.career)
+                    val pubKey = chat.bitchat.core.security.KeyManager.getPublicKeyBytes()
+                    if (pubKey.isNotEmpty()) {
+                        put("publicKey", android.util.Base64.encodeToString(pubKey, android.util.Base64.NO_WRAP))
+                    }
                 }.toString()
 
                 val myNickname = profile.name.takeIf { it.isNotBlank() } ?: "Me"
+
+                // Hash the stable localIdentity (dev_XXXX), NOT the display nickname
                 val myPeerId = java.security.MessageDigest.getInstance("SHA-256")
-                    .digest(myNickname.toByteArray())
+                    .digest(localIdentity.toByteArray())
                     .copyOf(8)
 
                 val packet = BitchatPacket(
@@ -1470,6 +1477,10 @@ class BLEMeshManager @Inject constructor(
                     put("movies", profile.favoriteMovies)
                     put("singers", profile.singers)
                     put("career", profile.career)
+                    val pubKey = chat.bitchat.core.security.KeyManager.getPublicKeyBytes()
+                    if (pubKey.isNotEmpty()) {
+                        put("publicKey", android.util.Base64.encodeToString(pubKey, android.util.Base64.NO_WRAP))
+                    }
                 }.toString()
 
                 val myPeerId = java.security.MessageDigest.getInstance("SHA-256")
@@ -1517,5 +1528,6 @@ class BLEMeshManager @Inject constructor(
         val CHAR_UUID: UUID = UUID.fromString("a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d")
         val CCCD_UUID: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
         val TYPE_PROFILE: Byte = 0x05.toByte()
+        val TYPE_DELIVERY_ACK: Byte = 0x06.toByte()
     }
 }

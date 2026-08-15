@@ -74,16 +74,21 @@ fun EchoMessageBubble(
             if (isOwn) {
                 if (showTimestamp) Spacer(modifier = Modifier.width(8.dp))
                 val status = when (message.deliveryStatus) {
-                    "sending" -> "Sending…"
+                    "sending" -> "🕒"
                     "failed" -> "Failed"
-                    "sent" -> "Sent"
+                    "sent" -> "✓"
+                    "delivered" -> "✓✓"
                     else -> null
                 }
                 if (status != null) {
                     Text(
                         text = status,
                         style = MaterialTheme.typography.labelSmall,
-                        color = if (message.deliveryStatus == "failed") EchoDanger else EchoTextTertiary
+                        color = when (message.deliveryStatus) {
+                            "failed" -> EchoDanger
+                            "delivered" -> EchoAccent
+                            else -> EchoTextTertiary
+                        }
                     )
                 }
             }

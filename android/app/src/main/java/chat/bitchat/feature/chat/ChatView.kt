@@ -71,9 +71,10 @@ fun ChatView(
     val listState = rememberLazyListState()
     val haptics = rememberHaptics()
 
-    val showScrollToBottom by remember(messages.size) {
+    val showScrollToBottom by remember {
         derivedStateOf {
-            listState.firstVisibleItemIndex < messages.size - 4
+            val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            messages.size > 4 && lastVisible < messages.size - 2
         }
     }
 

@@ -32,11 +32,11 @@ class ChatsViewModel @Inject constructor(
     private val messageDao = database.messageDao()
 
     val conversations: StateFlow<List<ConversationPreview>> = combine(
-        messageDao.getAllMessages(),
+        messageDao.getLatestMessagePerConversation(),
         bluetoothRepository.getDiscoveredDevices(),
         database.peerDao().getAllPeers(),
         profileRepository.getProfile()
-    ) { messages, devices, peers, profile ->
+    ) { latestMessages, devices, peers, profile ->
         val selfNames = setOfNotNull(
             profile?.name?.takeIf { it.isNotBlank() },
             "Me",
@@ -46,33 +46,26 @@ class ChatsViewModel @Inject constructor(
         val nearbyById = devices.associateBy { it.id.uppercase() }
         val nearbyByIdentity = devices.associateBy { it.identity.uppercase() }
 
-        messages
-            .filter { it.isPrivate }
-            .groupBy { msg -> conversationKey(msg, selfNames) }
-            .mapNotNull { (key, msgs) ->
-                if (key.isBlank()) return@mapNotNull null
-                val last = msgs.maxByOrNull { it.timestamp } ?: return@mapNotNull null
-                val peer = peers.find { it.peerID.equals(key, ignoreCase = true) }
-                val nearby = nearbyByIdentity[key.uppercase()] ?: nearbyById[key.uppercase()]
-                val name = nearby?.displayName()
-                    ?: peer?.nickname?.takeIf { it.isNotBlank() && !it.contains(":") }
-                    ?: msgs.mapNotNull { m ->
-                        when {
-                            m.isOutgoing -> m.recipientNickname
-                            else -> m.sender
-                        }?.takeIf { it.isNotBlank() && it.lowercase() !in selfNames }
-                    }.lastOrNull()
-                    ?: key
+        latestMessages.mapNotNull { msg ->
+            val key = conversationKey(msg, selfNames)
+            if (key.isBlank()) return@mapNotNull null
 
-                ConversationPreview(
-                    peerKey = key,
-                    displayName = name,
-                    lastMessage = last.content,
-                    timestamp = last.timestamp,
-                    isNearby = nearby != null
-                )
-            }
-            .sortedByDescending { it.timestamp }
+            val peer = peers.find { it.peerID.equals(key, ignoreCase = true) }
+            val nearby = nearbyByIdentity[key.uppercase()] ?: nearbyById[key.uppercase()]
+            val name = nearby?.displayName()
+                ?: peer?.nickname?.takeIf { it.isNotBlank() && !it.contains(":") }
+                ?: (if (msg.isOutgoing) msg.recipientNickname else msg.sender)
+                    ?.takeIf { it.isNotBlank() && it.lowercase() !in selfNames }
+                ?: key
+
+            ConversationPreview(
+                peerKey = key,
+                displayName = name,
+                lastMessage = msg.content,
+                timestamp = msg.timestamp,
+                isNearby = nearby != null
+            )
+        }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private fun conversationKey(msg: MessageEntity, selfNames: Set<String>): String {
