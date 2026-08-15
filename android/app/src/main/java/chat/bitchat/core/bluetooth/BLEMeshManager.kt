@@ -959,10 +959,28 @@ class BLEMeshManager @Inject constructor(
             }
 
             val maxPayload = maxOf(20, targetMtu - 3)
+
+            // Calculate overhead of the fragmentation BitchatPacket (excluding chunk data)
+            val dummyPacket = BitchatPacket(
+                version = packet.version,
+                type = 0x20,
+                senderID = packet.senderID,
+                recipientID = packet.recipientID,
+                timestamp = packet.timestamp,
+                payload = ByteArray(0),
+                signature = null,
+                ttl = packet.ttl,
+                route = packet.route,
+                isRSR = packet.isRSR
+            )
+            val dummyRaw = dummyPacket.toBinaryData(padding = false) ?: ByteArray(0)
+            val overhead = dummyRaw.size + 13 // 13 bytes for fragment header (fragmentId (8) + index (2) + total (2) + originalType (1))
+
+            val chunkSize = maxOf(20, targetMtu - 3 - overhead)
             val chunks = if (raw.size <= maxPayload) {
                 listOf(raw)
             } else {
-                fragment(packet, maxOf(20, maxPayload - 32))
+                fragment(packet, chunkSize)
             }
 
             // 1. Notify to subscribed servers
@@ -1306,6 +1324,44 @@ class BLEMeshManager @Inject constructor(
 
         _discoveredDevices.update { current ->
             val list = current.toMutableList()
+
+            // Check if this is a MAC rotation case:
+            // Incoming device has a temporary identity and a premium name,
+            // and there is an existing device in the list with the same premium name and a dev_ identity.
+            val isIncomingTemporary = !finalDevice.identity.startsWith("dev_")
+            val isIncomingPremiumName = !finalDevice.name.startsWith("Nearby ")
+
+            var rotatedIndex = -1
+            if (isIncomingTemporary && isIncomingPremiumName) {
+                rotatedIndex = list.indexOfFirst {
+                    it.name.equals(finalDevice.name, ignoreCase = true) && it.identity.startsWith("dev_")
+                }
+            }
+
+            if (rotatedIndex >= 0) {
+                val existing = list[rotatedIndex]
+                Log.d(TAG, "upsertDevice: Detected MAC rotation for ${existing.name}. Overwriting MAC: ${existing.id} -> ${finalDevice.id}")
+
+                // Update verified mapping so subsequent packets resolve immediately
+                verifiedMacToIdentity[finalDevice.id.uppercase()] = existing.identity
+
+                // Update the existing device with the new MAC address, new RSSI, and new discovery time
+                list[rotatedIndex] = existing.copy(
+                    id = finalDevice.id,
+                    rssi = finalDevice.rssi,
+                    discoveredAt = finalDevice.discoveredAt
+                )
+
+                // Remove any temporary item with the new MAC address if it was already added
+                val tempIdx = list.indexOfFirst { it.id.equals(finalDevice.id, true) && it != list[rotatedIndex] }
+                if (tempIdx >= 0) {
+                    list.removeAt(tempIdx)
+                }
+
+                list.sortByDescending { it.rssi }
+                return@update list
+            }
+
             val byId = list.indexOfFirst { it.id.equals(finalDevice.id, true) }
             val byIdentity = list.indexOfFirst { it.identity == finalDevice.identity }
             Log.d(TAG, "upsertDevice: incoming=$finalDevice, byId=$byId, byIdentity=$byIdentity")
@@ -1428,7 +1484,7 @@ class BLEMeshManager @Inject constructor(
                     timestamp = System.currentTimeMillis() / 1000,
                     payload = json.toByteArray(Charsets.UTF_8),
                     signature = null,
-                    ttl = 7,
+                    ttl = 1,
                     route = null,
                     isRSR = false
                 )
