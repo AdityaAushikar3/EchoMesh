@@ -2,6 +2,8 @@
 android-sdk/
 temp_platform_34/
 app-debug.apk
+android/jdk21/
+jdk21/
 
 # Ignore iOS submodule/repository (it has its own git)
 /bitchat/
