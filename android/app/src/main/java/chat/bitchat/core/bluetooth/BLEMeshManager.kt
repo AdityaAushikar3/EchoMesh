@@ -956,14 +956,15 @@ class BLEMeshManager @Inject constructor(
                 return@launch
             }
 
-            var targetMtu = 23
+            var targetMtu = Int.MAX_VALUE
             for ((_, link) in clients) {
-                if (link.mtu > targetMtu) targetMtu = link.mtu
+                targetMtu = minOf(targetMtu, link.mtu)
             }
             for (key in servers.keys) {
                 val mtu = serverConnectedCentralsMtu[key.uppercase()] ?: 23
-                if (mtu > targetMtu) targetMtu = mtu
+                targetMtu = minOf(targetMtu, mtu)
             }
+            if (targetMtu == Int.MAX_VALUE) targetMtu = 23
 
             val maxPayload = maxOf(20, targetMtu - 3)
 
@@ -1521,7 +1522,7 @@ class BLEMeshManager @Inject constructor(
 
     companion object {
         private const val TAG = "BLEMeshManager"
-        private const val MAX_CLIENT_LINKS = 4
+        private const val MAX_CLIENT_LINKS = 6
         private const val NICK_MAGIC_0: Byte = 0x45 // 'E'
         private const val NICK_MAGIC_1: Byte = 0x4D // 'M'
         val SERVICE_UUID: UUID = UUID.fromString("f47b5e2d-4a9e-4c5a-9b3f-8e1d2c3a4b5c")

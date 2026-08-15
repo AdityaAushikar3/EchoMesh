@@ -48,6 +48,7 @@ class ChatViewModel @Inject constructor(
 
     private val messageDao = database.messageDao()
     private val peerDao = database.peerDao()
+    private val blockedPeerDao = database.blockedPeerDao()
 
     private val resolvedAddress: StateFlow<String> = combine(
         bluetoothRepository.getDiscoveredDevices(),
@@ -75,6 +76,18 @@ class ChatViewModel @Inject constructor(
             ?: peerId.takeIf { it.isNotBlank() && !it.contains(":") }
             ?: "Someone"
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), peerId.ifBlank { "Someone" })
+
+    val isBlocked: StateFlow<Boolean> = combine(
+        blockedPeerDao.getAllBlockedPeers(),
+        displayName,
+        resolvedAddress
+    ) { blockedList, name, address ->
+        blockedList.any {
+            it.peerID.equals(peerId, ignoreCase = true) ||
+                    (address.isNotBlank() && it.peerID.equals(address, ignoreCase = true)) ||
+                    (it.nickname.isNotBlank() && it.nickname.equals(name, ignoreCase = true))
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     val youName: StateFlow<String> = profileRepository.getProfile()
         .map { it?.name?.ifBlank { "Me" } ?: "Me" }
@@ -110,6 +123,29 @@ class ChatViewModel @Inject constructor(
     private val _isSending = MutableStateFlow(false)
     val isSending: StateFlow<Boolean> = _isSending.asStateFlow()
 
+    init {
+        viewModelScope.launch {
+            markAsRead()
+            messagesState.collect { msgs ->
+                val hasUnread = msgs.any { !it.isOutgoing && it.deliveryStatus == "received" }
+                if (hasUnread) {
+                    markAsRead()
+                }
+            }
+        }
+    }
+
+    private suspend fun markAsRead() {
+        val name = displayName.value
+        if (peerId.isNotBlank() || name.isNotBlank()) {
+            messageDao.markConversationAsRead(peerId, name)
+            val resolved = resolvedAddress.value
+            if (resolved.isNotBlank() && resolved != peerId) {
+                messageDao.markConversationAsRead(resolved, name)
+            }
+        }
+    }
+
     fun sendMessage(content: String) {
         if (content.isBlank() || _isSending.value) return
         _isSending.value = true
@@ -117,13 +153,14 @@ class ChatViewModel @Inject constructor(
         viewModelScope.launch {
             val devices = bluetoothRepository.getDiscoveredDevices().firstOrNull().orEmpty()
             val peers = peerDao.getAllPeers().firstOrNull().orEmpty()
-            val address = resolveAddress(peerId, devices, peers, bleMeshManager.verifiedMacToIdentity)
+            val resolved = resolveAddress(peerId, devices, peers, bleMeshManager.verifiedMacToIdentity)
+            val address = resolved.ifBlank { peerId }
             val name = devices.find { it.id.equals(address, ignoreCase = true) }?.displayName()
-                ?: peers.find { it.peerID.equals(address, ignoreCase = true) }?.nickname
+                ?: peers.find { it.peerID.equals(address, ignoreCase = true) || it.peerID.equals(peerId, ignoreCase = true) }?.nickname
                 ?: displayName.value
 
-            if (address.isBlank() || !looksLikeBleAddress(address)) {
-                android.util.Log.e("ChatViewModel", "Cannot send: no BLE address for $peerId")
+            if (address.isBlank()) {
+                android.util.Log.e("ChatViewModel", "Cannot send: empty recipient address for $peerId")
                 _isSending.value = false
                 return@launch
             }
@@ -145,6 +182,31 @@ class ChatViewModel @Inject constructor(
             val name = displayName.value
             val selfIds = selfIdentifiers.value
             messageDao.deleteMessagesForConversation(address, name, selfIds)
+            if (peerId.isNotBlank() && peerId != address) {
+                messageDao.deleteMessagesForConversation(peerId, name, selfIds)
+            }
+        }
+    }
+
+    fun toggleBlockPeer() {
+        viewModelScope.launch {
+            val currentlyBlocked = isBlocked.value
+            val name = displayName.value
+            val address = resolvedAddress.value.ifBlank { peerId }
+            if (currentlyBlocked) {
+                blockedPeerDao.unblockPeer(peerId)
+                if (address.isNotBlank() && address != peerId) {
+                    blockedPeerDao.unblockPeer(address)
+                }
+            } else {
+                blockedPeerDao.blockPeer(
+                    chat.bitchat.data.database.BlockedPeer(
+                        peerID = address,
+                        nickname = name,
+                        blockedAt = System.currentTimeMillis()
+                    )
+                )
+            }
         }
     }
 

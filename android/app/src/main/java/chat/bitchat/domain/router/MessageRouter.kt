@@ -29,6 +29,7 @@ class MessageRouter @Inject constructor(
     private val messageDao = database.messageDao()
     private val peerDao = database.peerDao()
     private val userProfileDao = database.userProfileDao()
+    private val blockedPeerDao = database.blockedPeerDao()
     private val seenPackets = ConcurrentHashMap<String, Long>()
 
     init {
@@ -151,14 +152,16 @@ class MessageRouter @Inject constructor(
                         Log.e("MessageRouter", "Failed to decode BitchatMessage")
                         return@collect
                     }
-                    // 4b. Secondary recipient check using stable identity
+                    // 4b. Secondary recipient check using stable identity or display name
                     if (message.isPrivate && message.recipientNickname != null) {
                         val stableIdentity = bleMeshManager.localIdentity
-                        val recipMatch = message.recipientNickname.equals(stableIdentity, ignoreCase = true)
+                        val myName = userProfileDao.getProfileDirect()?.name?.takeIf { it.isNotBlank() }
+                        val recipMatch = message.recipientNickname.equals(stableIdentity, ignoreCase = true) ||
+                                (myName != null && message.recipientNickname.equals(myName, ignoreCase = true))
                         if (!recipMatch) {
                             Log.i(
                                 "MessageRouter",
-                                "Private message not for us (recipient='${message.recipientNickname}', me='$stableIdentity'). Relaying."
+                                "Private message not for us (recipient='${message.recipientNickname}', me='$stableIdentity', name='$myName'). Relaying."
                             )
                             // Relay instead of storing
                             if (packet.ttl > 1) {
@@ -176,18 +179,14 @@ class MessageRouter @Inject constructor(
                         .find { it.id.equals(senderAddress, ignoreCase = true) }
                     val senderStableId = message.senderPeerID?.id?.takeIf { it.startsWith("dev_") }
                         ?: discoveredSender?.identity?.takeIf { it.startsWith("dev_") }
+                        ?: bleMeshManager.verifiedMacToIdentity[senderAddress.uppercase()]
                         ?: peerDao.getAllPeersDirect().find { it.nickname.equals(message.sender, ignoreCase = true) }?.peerID?.takeIf { it.startsWith("dev_") }
+                        ?: message.senderPeerID?.id?.takeIf { it.isNotBlank() }
+                        ?: message.sender.takeIf { it.isNotBlank() }
+                        ?: senderAddress
 
-                    if (senderStableId == null) {
-                        Log.w("MessageRouter", "[IDENTITY] Cannot resolve stable identity for incoming message sender=${message.sender} address=$senderAddress. Aborting storage.")
-                        // Relay message to mesh as fallback
-                        if (!message.isPrivate && packet.ttl > 1) {
-                            val relayedPacket = packet.copy(ttl = (packet.ttl - 1).toByte())
-                            scope.launch {
-                                delay((50..150).random().toLong())
-                                bleMeshManager.relayPacket(senderAddress, relayedPacket)
-                            }
-                        }
+                    if (blockedPeerDao.isPeerBlocked(senderStableId, message.sender) > 0) {
+                        Log.w("MessageRouter", "Dropped incoming message from blocked node $senderStableId (${message.sender})")
                         return@collect
                     }
 
@@ -310,12 +309,9 @@ class MessageRouter @Inject constructor(
             val resolvedTarget = targetDevice?.identity?.takeIf { it.startsWith("dev_") }
                 ?: bleMeshManager.verifiedMacToIdentity[liveAddress.uppercase()]
                 ?: peerDao.getAllPeersDirect().find { it.peerID.equals(recipientAddress, ignoreCase = true) || it.nickname.equals(recipientName, ignoreCase = true) }?.peerID?.takeIf { it.startsWith("dev_") }
-
-            if (isPrivate && (resolvedTarget == null || !resolvedTarget.startsWith("dev_"))) {
-                Log.w("MessageRouter", "Cannot send private message: stable target identity has not yet been verified for $recipientAddress ($recipientName)")
-                callback(false)
-                return@launch
-            }
+                ?: recipientAddress.takeIf { it.startsWith("dev_") }
+                ?: targetDevice?.identity?.takeIf { it.isNotBlank() }
+                ?: recipientAddress.takeIf { it.isNotBlank() }
             val targetIdentity = resolvedTarget ?: recipientName
             val messageId = UUID.randomUUID().toString()
             val timestamp = System.currentTimeMillis()
@@ -384,7 +380,7 @@ class MessageRouter @Inject constructor(
                 timestamp = timestamp / 1000,
                 payload = message.toBinaryPayload(),
                 signature = null,
-                ttl = 7,
+                ttl = 10,
                 route = null,
                 isRSR = false
             )
@@ -418,7 +414,7 @@ class MessageRouter @Inject constructor(
             timestamp = System.currentTimeMillis() / 1000,
             payload = ackPayload,
             signature = null,
-            ttl = 4,
+            ttl = 8,
             route = null,
             isRSR = false
         )

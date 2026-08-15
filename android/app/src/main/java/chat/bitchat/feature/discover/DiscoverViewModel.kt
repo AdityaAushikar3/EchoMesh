@@ -34,6 +34,7 @@ class DiscoverViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val peerDao = database.peerDao()
+    private val blockedPeerDao = database.blockedPeerDao()
     val selectedTab = MutableStateFlow(DiscoverTab.All)
 
     private val parsedInterestsCache = java.util.concurrent.ConcurrentHashMap<String, List<Interest>>()
@@ -50,8 +51,18 @@ class DiscoverViewModel @Inject constructor(
         bluetoothRepository.getDiscoveredDevices(),
         peerDao.getAllPeers(),
         profileRepository.getProfile(),
+        blockedPeerDao.getAllBlockedPeers(),
         selectedTab
-    ) { devices, peers, myProfile, tab ->
+    ) { devices, peers, myProfile, blockedList, tab ->
+        val blockedIds = blockedList.map { it.peerID.lowercase() }.toSet()
+        val blockedNames = blockedList.filter { it.nickname.isNotBlank() }.map { it.nickname.lowercase() }.toSet()
+
+        val activeDevices = devices.filter { device ->
+            device.identity.lowercase() !in blockedIds &&
+                    device.id.lowercase() !in blockedIds &&
+                    device.name.lowercase() !in blockedNames
+        }
+
         val myInterests = myProfile?.let {
             val cacheKey = "me-${it.interests}-${it.favoriteMusic}-${it.favoriteMovies}-${it.singers}-${it.career}"
             val interestsStr = listOfNotNull(
@@ -67,7 +78,7 @@ class DiscoverViewModel @Inject constructor(
         val peerByIdMap = peers.associateBy { it.peerID.lowercase() }
         val peerByNameMap = peers.filter { it.nickname.isNotBlank() }.associateBy { it.nickname.lowercase() }
 
-        val items = devices.map { device ->
+        val items = activeDevices.map { device ->
             val peer = peerByIdMap[device.identity.lowercase()]
                 ?: peerByIdMap[device.id.lowercase()]
                 ?: peerByNameMap[device.name.lowercase()]

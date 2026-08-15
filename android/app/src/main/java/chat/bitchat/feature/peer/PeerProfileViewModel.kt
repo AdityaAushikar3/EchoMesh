@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import chat.bitchat.core.bluetooth.BluetoothRepository
 import chat.bitchat.core.bluetooth.NearbyDevice
+import chat.bitchat.data.database.BlockedPeer
 import chat.bitchat.data.database.EchoMeshDatabase
 import chat.bitchat.domain.repository.ProfileRepository
 import chat.bitchat.ui.util.Interest
@@ -18,6 +19,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class PeerProfileUi(
@@ -26,6 +28,7 @@ data class PeerProfileUi(
     val address: String,
     val meters: Int?,
     val isNearby: Boolean,
+    val isBlocked: Boolean = false,
     val bio: String,
     val movies: List<Interest> = emptyList(),
     val music: List<Interest> = emptyList(),
@@ -41,16 +44,18 @@ class PeerProfileViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     bluetoothRepository: BluetoothRepository,
     profileRepository: ProfileRepository,
-    database: EchoMeshDatabase
+    private val database: EchoMeshDatabase
 ) : ViewModel() {
 
     val peerId: String = decodePeerRouteId(savedStateHandle.get<String>("peerId") ?: "")
+    private val blockedPeerDao = database.blockedPeerDao()
 
     val uiState: StateFlow<PeerProfileUi> = combine(
         bluetoothRepository.getDiscoveredDevices(),
         profileRepository.getProfile(),
-        database.peerDao().getAllPeers()
-    ) { devices, myProfile, peers ->
+        database.peerDao().getAllPeers(),
+        blockedPeerDao.getAllBlockedPeers()
+    ) { devices, myProfile, peers, blockedList ->
         val device: NearbyDevice? = devices.find {
             it.id.equals(peerId, ignoreCase = true) ||
                     it.identity.equals(peerId, ignoreCase = true) ||
@@ -67,6 +72,12 @@ class PeerProfileViewModel @Inject constructor(
             ?: peer?.nickname?.takeIf { it.isNotBlank() && !it.contains(":") }
             ?: peerId.takeIf { !it.contains(":") }
             ?: "Someone"
+
+        val isBlocked = blockedList.any {
+            it.peerID.equals(stableId, ignoreCase = true) ||
+                    it.peerID.equals(peerId, ignoreCase = true) ||
+                    (it.nickname.isNotBlank() && it.nickname.equals(name, ignoreCase = true))
+        }
 
         val theirMovies = parseInterests(peer?.favoriteMovies)
         val theirMusic = parseInterests(peer?.favoriteMusic)
@@ -92,6 +103,7 @@ class PeerProfileViewModel @Inject constructor(
             address = address,
             meters = device?.rssi?.let { rssiToMeters(it) },
             isNearby = device != null,
+            isBlocked = isBlocked,
             bio = peer?.bio ?: "",
             movies = theirMovies,
             music = theirMusic,
@@ -110,8 +122,29 @@ class PeerProfileViewModel @Inject constructor(
             address = peerId,
             meters = null,
             isNearby = false,
+            isBlocked = false,
             bio = "",
             sharedCount = 0
         )
     )
+
+    fun toggleBlockPeer() {
+        viewModelScope.launch {
+            val current = uiState.value
+            if (current.isBlocked) {
+                blockedPeerDao.unblockPeer(current.peerKey)
+                if (peerId != current.peerKey) {
+                    blockedPeerDao.unblockPeer(peerId)
+                }
+            } else {
+                blockedPeerDao.blockPeer(
+                    BlockedPeer(
+                        peerID = current.peerKey,
+                        nickname = current.displayName,
+                        blockedAt = System.currentTimeMillis()
+                    )
+                )
+            }
+        }
+    }
 }

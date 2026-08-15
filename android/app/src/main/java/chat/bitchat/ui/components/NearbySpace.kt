@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.material3.MaterialTheme
@@ -51,6 +53,7 @@ import chat.bitchat.ui.theme.rememberReducedMotion
 import chat.bitchat.ui.util.ProximityBand
 import chat.bitchat.ui.util.chatKey
 import chat.bitchat.ui.util.displayName
+import chat.bitchat.ui.util.rememberHaptics
 import chat.bitchat.ui.util.rssiToBand
 import chat.bitchat.ui.util.rssiToMeters
 import chat.bitchat.ui.util.stableAngle
@@ -76,6 +79,26 @@ fun NearbySpace(
             repeatMode = RepeatMode.Restart
         ),
         label = "phase"
+    )
+
+    val pulseTransition = rememberInfiniteTransition(label = "pulse")
+    val pulseScale by pulseTransition.animateFloat(
+        initialValue = 0.25f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(if (reduced) 1 else 3200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "pulseScale"
+    )
+    val pulseAlpha by pulseTransition.animateFloat(
+        initialValue = 0.5f,
+        targetValue = 0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(if (reduced) 1 else 3200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "pulseAlpha"
     )
 
     // Smooth RSSI using Exponential Moving Average (EMA) to avoid teleporting/jittering avatars
@@ -109,6 +132,24 @@ fun NearbySpace(
                 val maxH = size.height
                 val radiusBase = (minOf(maxW, maxH) - ringPadding * 2f) / 2f
                 val c = Offset(maxW / 2f, maxH / 2f)
+
+                // Expanding glowing radar pulse wave
+                if (!reduced && pulseAlpha > 0f) {
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(
+                                EchoAccent.copy(alpha = pulseAlpha * 0.35f),
+                                EchoAccent.copy(alpha = pulseAlpha * 0.08f),
+                                Color.Transparent
+                            ),
+                            center = c,
+                            radius = radiusBase * pulseScale
+                        ),
+                        radius = radiusBase * pulseScale,
+                        center = c
+                    )
+                }
+
                 val ringColor = EchoAccent.copy(alpha = 0.12f * 0.9f)
                 listOf(0.28f, 0.52f, 0.78f).forEach { f ->
                     drawCircle(
@@ -120,6 +161,12 @@ fun NearbySpace(
                 }
             }
     ) {
+        AntigravityAmbientBackground(
+            modifier = Modifier.fillMaxSize(),
+            particleCount = 20,
+            color = EchoAccent
+        )
+
         val maxW = with(LocalDensity.current) { maxWidth.toPx() }
         val maxH = with(LocalDensity.current) { maxHeight.toPx() }
         val radiusBase = (minOf(maxW, maxH) - ringPadding * 2f) / 2f
@@ -198,8 +245,17 @@ fun NearbyPersonNode(
 ) {
     val name = device.displayName()
     val meters = rssiToMeters(device.rssi)
+    val band = rssiToBand(device.rssi)
+    val haptics = rememberHaptics()
+
+    val (targetAvatarSize, depthAlpha, fontSize) = when (band) {
+        ProximityBand.Near -> Triple(if (selected) 52.dp else 46.dp, 1.0f, 14.sp)
+        ProximityBand.Mid -> Triple(if (selected) 46.dp else 40.dp, 0.90f, 13.sp)
+        ProximityBand.Far -> Triple(if (selected) 40.dp else 34.dp, 0.72f, 12.sp)
+    }
+
     val appear by animateFloatAsState(
-        targetValue = 1f,
+        targetValue = depthAlpha,
         animationSpec = EchoMotion.soft(520),
         label = "appear"
     )
@@ -214,15 +270,19 @@ fun NearbyPersonNode(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 role = Role.Button,
-                onClick = onClick
+                onClick = {
+                    haptics.tick()
+                    onClick()
+                }
             )
     ) {
         PeerAvatar(
             name = name,
-            size = if (selected) 48.dp else 40.dp,
-            fontSize = 13.sp,
+            size = targetAvatarSize,
+            fontSize = fontSize,
             highlighted = selected,
-            ringColor = EchoAccent
+            ringColor = EchoAccent,
+            proximityBand = band
         )
         Spacer(modifier = Modifier.height(6.dp))
         Text(
@@ -236,7 +296,7 @@ fun NearbyPersonNode(
         Text(
             text = if (selected) "$meters m away" else "${meters}m",
             style = MaterialTheme.typography.labelSmall,
-            color = EchoTextSecondary,
+            color = if (band == ProximityBand.Near) EchoAccent else EchoTextSecondary,
             textAlign = TextAlign.Center
         )
     }

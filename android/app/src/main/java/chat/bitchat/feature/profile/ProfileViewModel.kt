@@ -18,6 +18,8 @@ class ProfileViewModel @Inject constructor(
     private val bluetoothRepository: BluetoothRepository
 ) : ViewModel() {
 
+    val localIdentity: String = bluetoothRepository.localIdentity
+
     val profileState: StateFlow<UserProfile?> = profileRepository.getProfile()
         .stateIn(
             scope = viewModelScope,

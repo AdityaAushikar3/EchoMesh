@@ -11,6 +11,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import javax.inject.Inject
 
@@ -19,7 +20,9 @@ data class ConversationPreview(
     val displayName: String,
     val lastMessage: String,
     val timestamp: Long,
-    val isNearby: Boolean
+    val isNearby: Boolean,
+    val isUnread: Boolean = false,
+    val isBlocked: Boolean = false
 )
 
 @HiltViewModel
@@ -30,13 +33,19 @@ class ChatsViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val messageDao = database.messageDao()
+    private val blockedPeerDao = database.blockedPeerDao()
+
+    val nearbyCount: StateFlow<Int> = bluetoothRepository.getDiscoveredDevices()
+        .map { it.size }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     val conversations: StateFlow<List<ConversationPreview>> = combine(
         messageDao.getLatestMessagePerConversation(),
         bluetoothRepository.getDiscoveredDevices(),
         database.peerDao().getAllPeers(),
+        blockedPeerDao.getAllBlockedPeers(),
         profileRepository.getProfile()
-    ) { latestMessages, devices, peers, profile ->
+    ) { latestMessages, devices, peers, blockedList, profile ->
         val selfNames = setOfNotNull(
             profile?.name?.takeIf { it.isNotBlank() },
             "Me",
@@ -58,12 +67,20 @@ class ChatsViewModel @Inject constructor(
                     ?.takeIf { it.isNotBlank() && it.lowercase() !in selfNames }
                 ?: key
 
+            val isUnread = !msg.isOutgoing && msg.deliveryStatus == "received"
+            val isBlocked = blockedList.any {
+                it.peerID.equals(key, ignoreCase = true) ||
+                        (it.nickname.isNotBlank() && it.nickname.equals(name, ignoreCase = true))
+            }
+
             ConversationPreview(
                 peerKey = key,
                 displayName = name,
                 lastMessage = msg.content,
                 timestamp = msg.timestamp,
-                isNearby = nearby != null
+                isNearby = nearby != null,
+                isUnread = isUnread,
+                isBlocked = isBlocked
             )
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())

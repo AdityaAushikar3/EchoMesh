@@ -43,6 +43,7 @@ import chat.bitchat.ui.theme.EchoTextTertiary
 import chat.bitchat.ui.theme.EchoVoid
 import chat.bitchat.ui.util.displayName
 import chat.bitchat.ui.util.parseInterests
+import chat.bitchat.ui.util.rssiToBand
 import chat.bitchat.ui.util.rssiToMeters
 
 @Composable
@@ -157,7 +158,11 @@ private fun DiscoverPersonRow(
             .padding(horizontal = EchoSpace.md, vertical = EchoSpace.sm),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        PeerAvatar(name = name, size = 44.dp)
+        PeerAvatar(
+            name = name,
+            size = 44.dp,
+            proximityBand = rssiToBand(item.device.rssi)
+        )
         Spacer(modifier = Modifier.width(EchoSpace.sm))
         Column(modifier = Modifier.weight(1f)) {
             Text(

@@ -29,8 +29,8 @@ interface PeerDao {
     @Query("SELECT * FROM peers WHERE peerID = :peerId LIMIT 1")
     fun getPeerById(peerId: String): Flow<Peer?>
 
-    @Query("SELECT * FROM peers WHERE peerID = :peerId LIMIT 1")
-    suspend fun getPeerByIdDirect(peerId: String): Peer?
+    @Query("SELECT * FROM peers WHERE peerID = :identifier OR nickname = :identifier LIMIT 1")
+    suspend fun getPeerByIdDirect(identifier: String): Peer?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPeer(peer: Peer)
@@ -62,6 +62,9 @@ interface PeerDao {
         }
     }
 
+    @Query("DELETE FROM peers")
+    suspend fun clearAllPeers()
+
     @Delete
     suspend fun deletePeer(peer: Peer)
 }
@@ -75,6 +78,8 @@ interface MessageDao {
         """
         SELECT * FROM messages
         WHERE isPrivate = 1 AND (
+            conversationId = :conversationId OR conversationId = :fallbackName
+            OR
             (sender IN (:selfIdentifiers) AND (recipientNickname = :conversationId OR recipientNickname = :fallbackName))
             OR
             ((sender = :conversationId OR sender = :fallbackName) AND recipientNickname IN (:selfIdentifiers))
@@ -114,6 +119,9 @@ interface MessageDao {
     @Query("UPDATE messages SET deliveryStatus = :status WHERE id = :id AND (deliveryStatus != 'delivered' OR :status = 'delivered')")
     suspend fun updateDeliveryStatus(id: String, status: String)
 
+    @Query("UPDATE messages SET deliveryStatus = 'read' WHERE (conversationId = :conversationId OR conversationId = :fallbackName OR sender = :conversationId OR sender = :fallbackName) AND isOutgoing = 0 AND deliveryStatus = 'received'")
+    suspend fun markConversationAsRead(conversationId: String, fallbackName: String = "")
+
     @Query("DELETE FROM messages")
     suspend fun clearAllMessages()
 
@@ -123,6 +131,8 @@ interface MessageDao {
     @Query(
         """
         DELETE FROM messages WHERE isPrivate = 1 AND (
+            conversationId = :conversationId OR conversationId = :fallbackName
+            OR
             (sender IN (:selfIdentifiers) AND (recipientNickname = :conversationId OR recipientNickname = :fallbackName))
             OR
             ((sender = :conversationId OR sender = :fallbackName) AND recipientNickname IN (:selfIdentifiers))
@@ -135,6 +145,30 @@ interface MessageDao {
         selfIdentifiers: List<String>
     )
 
-    @Query("DELETE FROM messages WHERE (sender = :peerId OR recipientNickname = :peerId) AND isPrivate = 1")
+    @Query("DELETE FROM messages WHERE (sender = :peerId OR recipientNickname = :peerId OR conversationId = :peerId) AND isPrivate = 1")
     suspend fun deleteMessagesForPeer(peerId: String)
+}
+
+@Dao
+interface BlockedPeerDao {
+    @Query("SELECT * FROM blocked_peers ORDER BY blockedAt DESC")
+    fun getAllBlockedPeers(): Flow<List<BlockedPeer>>
+
+    @Query("SELECT * FROM blocked_peers ORDER BY blockedAt DESC")
+    suspend fun getAllBlockedPeersDirect(): List<BlockedPeer>
+
+    @Query("SELECT COUNT(*) FROM blocked_peers WHERE peerID = :peerId OR (nickname != '' AND nickname = :nickname)")
+    suspend fun isPeerBlocked(peerId: String, nickname: String = ""): Int
+
+    @Query("SELECT COUNT(*) FROM blocked_peers WHERE peerID = :identifier OR (nickname != '' AND nickname = :identifier)")
+    fun isPeerBlockedFlow(identifier: String): Flow<Int>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun blockPeer(blockedPeer: BlockedPeer)
+
+    @Query("DELETE FROM blocked_peers WHERE peerID = :peerId OR nickname = :peerId")
+    suspend fun unblockPeer(peerId: String)
+
+    @Query("DELETE FROM blocked_peers")
+    suspend fun clearAllBlockedPeers()
 }

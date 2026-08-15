@@ -2,24 +2,25 @@ package chat.bitchat.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// EchoMesh — dark-first premium palette
-val EchoVoid = Color(0xFF07080C)
-val EchoInk = Color(0xFF0C0E14)
-val EchoSurface = Color(0xFF141821)
-val EchoElevated = Color(0xFF1A1F2B)
-val EchoHairline = Color(0xFF2A3142)
+// EchoMesh — Bio-Luminescent Cyber palette (Dark-first tactical OLED)
+val EchoVoid = Color(0xFF07090E)
+val EchoInk = Color(0xFF0C0F17)
+val EchoSurface = Color(0xFF101520)
+val EchoElevated = Color(0xFF161E2E)
+val EchoHairline = Color(0xFF222D42)
 
 val EchoTextPrimary = Color(0xFFF4F6FA)
 val EchoTextSecondary = Color(0xFF9AA3B5)
 val EchoTextTertiary = Color(0xFF6B7385)
+val EchoTextOnAccent = Color(0xFF07090E)
 
-val EchoAccent = Color(0xFF5B8CFF)
-val EchoAccentSoft = Color(0xFF2A3F73)
-val EchoAccentMuted = Color(0xFF1B2744)
+val EchoAccent = Color(0xFF00F2FE)
+val EchoAccentSoft = Color(0xFF0072FF)
+val EchoAccentMuted = Color(0xFF0C2448)
 
-val EchoSuccess = Color(0xFF3DDC97)
-val EchoWarning = Color(0xFFE8B84A)
-val EchoDanger = Color(0xFFFF6B7A)
+val EchoSuccess = Color(0xFF00FFA3)
+val EchoWarning = Color(0xFFFFB000)
+val EchoDanger = Color(0xFFFF4560)
 
 val EchoYou = Color(0xFFE8ECF4)
 

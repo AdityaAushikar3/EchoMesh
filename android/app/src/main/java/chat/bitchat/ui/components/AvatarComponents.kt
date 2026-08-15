@@ -48,16 +48,25 @@ fun PeerAvatar(
     size: Dp = 44.dp,
     fontSize: TextUnit = 15.sp,
     highlighted: Boolean = false,
-    ringColor: Color = EchoAccent
+    ringColor: Color = EchoAccent,
+    proximityBand: chat.bitchat.ui.util.ProximityBand? = null
 ) {
     val base = getAvatarColor(name)
+    val effectiveRingColor = when (proximityBand) {
+        chat.bitchat.ui.util.ProximityBand.Near -> EchoAccent.copy(alpha = 0.95f)
+        chat.bitchat.ui.util.ProximityBand.Mid -> EchoAccent.copy(alpha = 0.6f)
+        chat.bitchat.ui.util.ProximityBand.Far -> AvatarSlate.copy(alpha = 0.45f)
+        null -> ringColor.copy(alpha = 0.7f)
+    }
+    val showBorder = highlighted || proximityBand != null
+
     Box(
         modifier = modifier
             .size(size)
             .semantics { contentDescription = "Avatar for $name" }
             .then(
-                if (highlighted) {
-                    Modifier.border(1.5.dp, ringColor.copy(alpha = 0.7f), CircleShape)
+                if (showBorder) {
+                    Modifier.border(1.5.dp, effectiveRingColor, CircleShape)
                 } else Modifier
             )
             .clip(CircleShape)

@@ -24,22 +24,25 @@ object CryptoUtil {
 
     fun getSharedSecret(peerId: String, myPrivateKey: PrivateKey, theirPublicKeyBytes: ByteArray): SecretKey? {
         val cacheKey = "$peerId-${theirPublicKeyBytes.contentHashCode()}"
-        return sharedSecretCache.getOrPut(cacheKey) {
-            try {
-                val keyFactory = KeyFactory.getInstance("EC")
-                val theirPublicKey: PublicKey = keyFactory.generatePublic(X509EncodedKeySpec(theirPublicKeyBytes))
+        val cached = sharedSecretCache[cacheKey]
+        if (cached != null) return cached
 
-                val keyAgreement = KeyAgreement.getInstance("ECDH")
-                keyAgreement.init(myPrivateKey)
-                keyAgreement.doPhase(theirPublicKey, true)
+        return try {
+            val keyFactory = KeyFactory.getInstance("EC")
+            val theirPublicKey: PublicKey = keyFactory.generatePublic(X509EncodedKeySpec(theirPublicKeyBytes))
 
-                val sharedSecretBytes = keyAgreement.generateSecret()
-                val aesKeyBytes = sharedSecretBytes.copyOf(32) // AES-256
-                SecretKeySpec(aesKeyBytes, "AES")
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to derive ECDH shared secret for $peerId", e)
-                return null
-            }
+            val keyAgreement = KeyAgreement.getInstance("ECDH")
+            keyAgreement.init(myPrivateKey)
+            keyAgreement.doPhase(theirPublicKey, true)
+
+            val sharedSecretBytes = keyAgreement.generateSecret()
+            val aesKeyBytes = sharedSecretBytes.copyOf(32) // AES-256
+            val secretKey = SecretKeySpec(aesKeyBytes, "AES")
+            sharedSecretCache[cacheKey] = secretKey
+            secretKey
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to derive ECDH shared secret for $peerId", e)
+            null
         }
     }
 

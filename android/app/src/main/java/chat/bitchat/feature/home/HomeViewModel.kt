@@ -42,10 +42,17 @@ class HomeViewModel @Inject constructor(
 
     fun deletePeerAndHistory(peerName: String) {
         viewModelScope.launch {
-            messageDao.deleteMessagesForPeer(peerName)
             val peerList = peerDao.getAllPeers().firstOrNull() ?: emptyList()
             val peer = peerList.find { it.nickname == peerName || it.peerID == peerName }
-            if (peer != null) peerDao.deletePeer(peer)
+            if (peer != null) {
+                peerDao.deletePeer(peer)
+                messageDao.deleteMessagesForPeer(peer.peerID)
+                if (peer.nickname.isNotBlank() && peer.nickname != peer.peerID) {
+                    messageDao.deleteMessagesForPeer(peer.nickname)
+                }
+            } else {
+                messageDao.deleteMessagesForPeer(peerName)
+            }
         }
     }
 }

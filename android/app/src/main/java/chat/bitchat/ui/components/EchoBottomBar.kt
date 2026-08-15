@@ -58,11 +58,12 @@ fun EchoBottomBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(1.dp)
-                .background(EchoElevated)
+                .background(EchoAccent.copy(alpha = 0.2f))
         )
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .background(chat.bitchat.ui.theme.EchoSurface.copy(alpha = 0.88f))
                 .padding(horizontal = EchoSpace.md, vertical = EchoSpace.xs),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {

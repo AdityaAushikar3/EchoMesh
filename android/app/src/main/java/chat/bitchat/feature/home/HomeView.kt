@@ -5,6 +5,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -134,19 +135,27 @@ private fun SpaceHeader(
             .fillMaxWidth()
             .padding(horizontal = EchoSpace.lg, vertical = EchoSpace.md)
     ) {
-        Text(
-            text = "Space",
-            style = MaterialTheme.typography.headlineMedium,
-            color = EchoTextPrimary
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Space",
+                style = MaterialTheme.typography.headlineMedium,
+                color = EchoTextPrimary
+            )
+            chat.bitchat.ui.components.MeshStatusPill(
+                peerCount = peopleCount,
+                isActive = isScanning
+            )
+        }
         Spacer(modifier = Modifier.height(EchoSpace.xs))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            StatusDot(active = isScanning)
-            Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = when {
                     peopleCount > 0 -> "$peopleCount ${if (peopleCount == 1) "person" else "people"} nearby"
-                    isScanning -> "Listening…"
+                    isScanning -> "Listening for nearby mesh nodes…"
                     else -> "Scanner paused"
                 },
                 style = MaterialTheme.typography.bodyMedium,

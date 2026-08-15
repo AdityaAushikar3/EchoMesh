@@ -43,4 +43,9 @@ object DatabaseModule {
     fun provideMessageDao(database: EchoMeshDatabase): MessageDao {
         return database.messageDao()
     }
+
+    @Provides
+    fun provideBlockedPeerDao(database: EchoMeshDatabase): chat.bitchat.data.database.BlockedPeerDao {
+        return database.blockedPeerDao()
+    }
 }
