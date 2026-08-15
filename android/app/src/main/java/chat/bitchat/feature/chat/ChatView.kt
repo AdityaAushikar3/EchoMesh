@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -23,6 +24,10 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.foundation.shape.CircleShape
+import kotlinx.coroutines.launch
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -65,6 +70,12 @@ fun ChatView(
     var showMenu by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val haptics = rememberHaptics()
+
+    val showScrollToBottom by remember(messages.size) {
+        derivedStateOf {
+            listState.firstVisibleItemIndex < messages.size - 4
+        }
+    }
 
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) {
@@ -132,24 +143,56 @@ fun ChatView(
             }
         }
 
-        LazyColumn(
-            state = listState,
+        Box(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .padding(horizontal = EchoSpace.lg),
-            verticalArrangement = Arrangement.spacedBy(EchoSpace.sm),
-            contentPadding = PaddingValues(vertical = EchoSpace.md)
         ) {
-            itemsIndexed(messages, key = { _, m -> m.id }) { index, message ->
-                val showTime = index == messages.lastIndex ||
-                    index == 0 ||
-                    messages[index].timestamp - messages[index - 1].timestamp > 5 * 60 * 1000
-                EchoMessageBubble(
-                    message = message,
-                    isOwn = message.isOutgoing,
-                    showTimestamp = showTime || message.isOutgoing
-                )
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = EchoSpace.lg),
+                verticalArrangement = Arrangement.spacedBy(EchoSpace.sm),
+                contentPadding = PaddingValues(vertical = EchoSpace.md)
+            ) {
+                itemsIndexed(messages, key = { _, m -> m.id }) { index, message ->
+                    val showTime = index == messages.lastIndex ||
+                        index == 0 ||
+                        messages[index].timestamp - messages[index - 1].timestamp > 5 * 60 * 1000
+                    EchoMessageBubble(
+                        message = message,
+                        isOwn = message.isOutgoing,
+                        showTimestamp = showTime || message.isOutgoing
+                    )
+                }
+            }
+
+            // Scroll to Bottom FAB
+            androidx.compose.animation.AnimatedVisibility(
+                visible = showScrollToBottom,
+                enter = androidx.compose.animation.fadeIn(),
+                exit = androidx.compose.animation.fadeOut(),
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(EchoSpace.md)
+            ) {
+                val coroutineScope = rememberCoroutineScope()
+                androidx.compose.material3.SmallFloatingActionButton(
+                    onClick = {
+                        coroutineScope.launch {
+                            if (messages.isNotEmpty()) {
+                                listState.animateScrollToItem(messages.size - 1)
+                            }
+                        }
+                    },
+                    containerColor = EchoAccent,
+                    contentColor = EchoTextPrimary,
+                    shape = CircleShape,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Text("↓", style = MaterialTheme.typography.titleMedium)
+                }
             }
         }
 

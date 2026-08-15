@@ -146,11 +146,7 @@ object BinaryProtocol {
     }
 
     fun decode(data: ByteArray): BitchatPacket? {
-        val decoded = decodeCore(data)
-        if (decoded != null) return decoded
-
         val unpadded = MessagePadding.unpad(data)
-        if (unpadded.size == data.size) return null
         return decodeCore(unpadded)
     }
 

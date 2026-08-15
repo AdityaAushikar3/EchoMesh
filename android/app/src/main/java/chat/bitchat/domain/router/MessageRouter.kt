@@ -32,6 +32,17 @@ class MessageRouter @Inject constructor(
 
     init {
         observeIncomingPackets()
+        startPruningLoop()
+    }
+
+    private fun startPruningLoop() {
+        scope.launch {
+            while (true) {
+                delay(60_000)
+                val cutoff = System.currentTimeMillis() - (5 * 60 * 1000)
+                seenPackets.entries.removeIf { it.value < cutoff }
+            }
+        }
     }
 
     @kotlin.OptIn(kotlin.ExperimentalStdlibApi::class)
@@ -40,11 +51,8 @@ class MessageRouter @Inject constructor(
             Log.i("MessageRouter", "Listening for incoming mesh packets")
             bleMeshManager.receivedPackets.collect { (senderAddress, packet) ->
                 val now = System.currentTimeMillis()
-                
-                // 1. Seen-set clean up (older than 5 minutes)
-                seenPackets.entries.removeIf { now - it.value > 5 * 60 * 1000 }
 
-                // 2. Compute packet unique ID
+                // 1. Compute packet unique ID
                 val payloadDigest = MessageDigest.getInstance("SHA-256")
                     .digest(packet.payload)
                     .take(4)
@@ -52,12 +60,11 @@ class MessageRouter @Inject constructor(
                 val senderHex = packet.senderID.joinToString("") { "%02x".format(it) }
                 val messageID = "$senderHex-${packet.timestamp}-${packet.type}-$payloadDigest"
 
-                // 3. Deduplication check
-                if (seenPackets.containsKey(messageID)) {
+                // 2. Deduplication check
+                if (seenPackets.putIfAbsent(messageID, now) != null) {
                     Log.d("MessageRouter", "Duplicate packet ignored: $messageID")
                     return@collect
                 }
-                seenPackets[messageID] = now
 
                 // Calculate my own PeerID (stable identity hash)
                 val myStablePeerId = getMockPeerID(bleMeshManager.localIdentity)

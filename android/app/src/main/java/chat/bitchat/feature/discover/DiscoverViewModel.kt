@@ -36,33 +36,50 @@ class DiscoverViewModel @Inject constructor(
     private val peerDao = database.peerDao()
     val selectedTab = MutableStateFlow(DiscoverTab.All)
 
+    private val parsedInterestsCache = java.util.concurrent.ConcurrentHashMap<String, List<Interest>>()
+
+    private fun getParsedInterests(cacheKey: String, interestsString: String): List<Interest> {
+        val existing = parsedInterestsCache[cacheKey]
+        if (existing != null) return existing
+        val parsed = parseInterests(interestsString)
+        parsedInterestsCache[cacheKey] = parsed
+        return parsed
+    }
+
     val discoverItems: StateFlow<List<DiscoverItem>> = combine(
         bluetoothRepository.getDiscoveredDevices(),
         peerDao.getAllPeers(),
         profileRepository.getProfile(),
         selectedTab
     ) { devices, peers, myProfile, tab ->
-        val myInterests = parseInterests(
-            listOfNotNull(
-                myProfile?.interests,
-                myProfile?.favoriteMusic,
-                myProfile?.favoriteMovies,
-                myProfile?.singers,
-                myProfile?.career
+        val myInterests = myProfile?.let {
+            val cacheKey = "me-${it.interests}-${it.favoriteMusic}-${it.favoriteMovies}-${it.singers}-${it.career}"
+            val interestsStr = listOfNotNull(
+                it.interests,
+                it.favoriteMusic,
+                it.favoriteMovies,
+                it.singers,
+                it.career
             ).joinToString(", ")
-        )
+            getParsedInterests(cacheKey, interestsStr)
+        } ?: emptyList()
+
+        val peerByIdMap = peers.associateBy { it.peerID.lowercase() }
+        val peerByNameMap = peers.filter { it.nickname.isNotBlank() }.associateBy { it.nickname.lowercase() }
 
         val items = devices.map { device ->
-            val peer = peers.find { it.peerID.equals(device.id, ignoreCase = true) || it.nickname == device.name }
-            val theirInterests = parseInterests(
-                listOfNotNull(
-                    peer?.interests,
-                    peer?.favoriteMusic,
-                    peer?.favoriteMovies,
-                    peer?.singers,
-                    peer?.career
+            val peer = peerByIdMap[device.id.lowercase()] ?: peerByNameMap[device.name.lowercase()]
+            val theirInterests = peer?.let {
+                val cacheKey = "${it.peerID}-${it.interests}-${it.favoriteMusic}-${it.favoriteMovies}-${it.singers}-${it.career}"
+                val interestsStr = listOfNotNull(
+                    it.interests,
+                    it.favoriteMusic,
+                    it.favoriteMovies,
+                    it.singers,
+                    it.career
                 ).joinToString(", ")
-            )
+                getParsedInterests(cacheKey, interestsStr)
+            } ?: emptyList()
             val shared = sharedInterests(myInterests, theirInterests)
 
             DiscoverItem(

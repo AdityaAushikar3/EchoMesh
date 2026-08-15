@@ -5,10 +5,11 @@ import java.util.zip.Deflater
 import java.util.zip.Inflater
 
 object CompressionUtil {
-    private const val COMPRESSION_THRESHOLD_BYTES = 100
+    private const val COMPRESSION_THRESHOLD_BYTES = 64
+    private const val MAX_DECOMPRESSED_SIZE_BYTES = 500 * 1024
 
     fun compress(data: ByteArray): ByteArray? {
-        if (data.size < COMPRESSION_THRESHOLD_BYTES) return null
+        if (data.size <= COMPRESSION_THRESHOLD_BYTES) return null
 
         val deflater = Deflater()
         deflater.setInput(data)
@@ -27,6 +28,7 @@ object CompressionUtil {
     }
 
     fun decompress(compressedData: ByteArray, originalSize: Int): ByteArray? {
+        if (originalSize <= 0 || originalSize > MAX_DECOMPRESSED_SIZE_BYTES) return null
         val inflater = Inflater()
         inflater.setInput(compressedData)
         val result = ByteArray(originalSize)
@@ -41,7 +43,7 @@ object CompressionUtil {
     }
 
     fun shouldCompress(data: ByteArray): Boolean {
-        if (data.size < COMPRESSION_THRESHOLD_BYTES) return false
+        if (data.size <= COMPRESSION_THRESHOLD_BYTES) return false
 
         val uniqueByteCount = data.toSet().size
         val sampleSize = minOf(data.size, 256)

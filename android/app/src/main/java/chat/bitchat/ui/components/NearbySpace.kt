@@ -18,6 +18,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -75,17 +78,51 @@ fun NearbySpace(
         label = "phase"
     )
 
-    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+    // Smooth RSSI using Exponential Moving Average (EMA) to avoid teleporting/jittering avatars
+    val smoothedRssiMap = remember { mutableMapOf<String, Double>() }
+    val alpha = 0.2f
+    val smoothedDevices = remember(devices) {
+        devices.map { device ->
+            val prev = smoothedRssiMap[device.id]
+            val currentRssi = device.rssi.toDouble()
+            val nextSmoothed = if (prev == null) {
+                currentRssi
+            } else {
+                alpha * currentRssi + (1 - alpha) * prev
+            }
+            smoothedRssiMap[device.id] = nextSmoothed
+            device.copy(rssi = nextSmoothed.roundToInt())
+        }
+    }
+
+    val sortedDevices = remember(smoothedDevices) {
+        smoothedDevices.sortedByDescending { it.rssi }.take(6).sortedBy { it.id }
+    }
+
+    val ringPadding = with(LocalDensity.current) { EchoSpace.md.toPx() }
+
+    BoxWithConstraints(
+        modifier = modifier
+            .fillMaxSize()
+            .drawBehind {
+                val maxW = size.width
+                val maxH = size.height
+                val radiusBase = (minOf(maxW, maxH) - ringPadding * 2f) / 2f
+                val c = Offset(maxW / 2f, maxH / 2f)
+                val ringColor = EchoAccent.copy(alpha = 0.12f * 0.9f)
+                listOf(0.28f, 0.52f, 0.78f).forEach { f ->
+                    drawCircle(
+                        color = ringColor,
+                        radius = radiusBase * f,
+                        center = c,
+                        style = Stroke(width = 1.dp.toPx())
+                    )
+                }
+            }
+    ) {
         val maxW = with(LocalDensity.current) { maxWidth.toPx() }
         val maxH = with(LocalDensity.current) { maxHeight.toPx() }
-        val radiusBase = minOf(maxW, maxH) / 2f
-
-        SoftOrbitRings(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(EchoSpace.md)
-                .alpha(0.9f)
-        )
+        val radiusBase = (minOf(maxW, maxH) - ringPadding * 2f) / 2f
 
         Column(
             modifier = Modifier.align(Alignment.Center),
@@ -106,7 +143,6 @@ fun NearbySpace(
             )
         }
 
-        val sortedDevices = remember(devices) { devices.sortedBy { it.id } }
         sortedDevices.forEachIndexed { index, device ->
             key(device.identity) {
                 val band = rssiToBand(device.rssi)
@@ -119,15 +155,33 @@ fun NearbySpace(
                 val angleRad = Math.toRadians(angleDeg.toDouble())
                 val floatAmp = if (reduced) 0f else 5f
                 val floatOffset = sin(floatPhase + index * 0.9f) * floatAmp
-                val x = (cos(angleRad) * radiusBase * radiusFraction).toFloat()
-                val y = (sin(angleRad) * radiusBase * radiusFraction).toFloat() + floatOffset
+                val targetX = (cos(angleRad) * radiusBase * radiusFraction).toFloat()
+                val targetY = (sin(angleRad) * radiusBase * radiusFraction).toFloat() + floatOffset
+
+                // Smooth coordinates interpolation to glide fluidly
+                val animX by animateFloatAsState(
+                    targetValue = targetX,
+                    animationSpec = androidx.compose.animation.core.spring(
+                        dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy,
+                        stiffness = androidx.compose.animation.core.Spring.StiffnessLow
+                    ),
+                    label = "x"
+                )
+                val animY by animateFloatAsState(
+                    targetValue = targetY,
+                    animationSpec = androidx.compose.animation.core.spring(
+                        dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy,
+                        stiffness = androidx.compose.animation.core.Spring.StiffnessLow
+                    ),
+                    label = "y"
+                )
 
                 NearbyPersonNode(
                     device = device,
                     selected = selectedId == device.id || selectedId == device.chatKey(),
                     modifier = Modifier
                         .align(Alignment.Center)
-                        .offset { IntOffset(x.roundToInt(), y.roundToInt()) },
+                        .offset { IntOffset(animX.roundToInt(), animY.roundToInt()) },
                     onClick = { onPersonClick(device) }
                 )
             }

@@ -41,6 +41,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -86,7 +87,7 @@ class BLEMeshManager @Inject constructor(
     val receivedPackets: SharedFlow<Pair<String, BitchatPacket>> = _receivedPackets.asSharedFlow()
 
     private val assemblyBuffer = BLEFragmentAssemblyBuffer()
-    private val sendMutex = Mutex()
+    private val serverWriteMutexes = ConcurrentHashMap<String, Mutex>()
 
     private var scanCallback: ScanCallback? = null
     private var advertiseCallback: AdvertiseCallback? = null
@@ -117,11 +118,13 @@ class BLEMeshManager @Inject constructor(
         nicknameCache[key.uppercase()] = name
         
         // Update active discovered list directly
-        val list = _discoveredDevices.value.toMutableList()
-        val idx = list.indexOfFirst { it.identity == key || it.id.equals(key, true) }
-        if (idx >= 0) {
-            list[idx] = list[idx].copy(name = name)
-            _discoveredDevices.value = list
+        _discoveredDevices.update { current ->
+            val list = current.toMutableList()
+            val idx = list.indexOfFirst { it.identity == key || it.id.equals(key, true) }
+            if (idx >= 0) {
+                list[idx] = list[idx].copy(name = name)
+            }
+            list
         }
     }
 
@@ -133,15 +136,17 @@ class BLEMeshManager @Inject constructor(
             verifiedMacToIdentity[cleanMac] = stableId
             Log.d(TAG, "[IDENTITY] verified MAC=$cleanMac -> stableId=$stableId")
             
-            val list = _discoveredDevices.value.toMutableList()
-            val idx = list.indexOfFirst { it.id.equals(cleanMac, ignoreCase = true) }
-            if (idx >= 0) {
-                val existing = list[idx]
-                if (existing.identity != stableId) {
-                    list[idx] = existing.copy(identity = stableId)
-                    _discoveredDevices.value = list
-                    Log.d(TAG, "[IDENTITY] applied verified identity to discovered device: $cleanMac -> $stableId")
+            _discoveredDevices.update { current ->
+                val list = current.toMutableList()
+                val idx = list.indexOfFirst { it.id.equals(cleanMac, ignoreCase = true) }
+                if (idx >= 0) {
+                    val existing = list[idx]
+                    if (existing.identity != stableId) {
+                        list[idx] = existing.copy(identity = stableId)
+                        Log.d(TAG, "[IDENTITY] applied verified identity to discovered device: $cleanMac -> $stableId")
+                    }
                 }
+                list
             }
         }
     }
@@ -157,7 +162,8 @@ class BLEMeshManager @Inject constructor(
         @Volatile var mtu: Int = 23,
         @Volatile var pendingWrite: CompletableDeferred<Int>? = null,
         @Volatile var nickname: String? = null,
-        @Volatile var lastUsed: Long = System.currentTimeMillis()
+        @Volatile var lastUsed: Long = System.currentTimeMillis(),
+        val writeMutex: Mutex = Mutex()
     )
 
     val localIdentity: String
@@ -334,20 +340,22 @@ class BLEMeshManager @Inject constructor(
     private fun decodeNicknamePayload(bytes: ByteArray?): ParsedAd? {
         if (bytes == null || bytes.size < 6) return null
         if (bytes[0] != NICK_MAGIC_0 || bytes[1] != NICK_MAGIC_1) return null
-        val shortId = ByteBuffer.wrap(bytes, 2, 4).int
+        val shortId = ByteBuffer.wrap(bytes, 2, 4).order(java.nio.ByteOrder.BIG_ENDIAN).int
         val name = String(bytes, 6, bytes.size - 6, StandardCharsets.UTF_8).trim()
         if (name.isBlank()) return null
         return ParsedAd(shortId = shortId, name = name.take(24))
     }
 
     private fun encodeNicknamePayload(name: String, shortId: Int): ByteArray {
-        val nick = name.trim().take(7).ifBlank { "Echo" }
-            .toByteArray(StandardCharsets.UTF_8)
-        val buf = ByteBuffer.allocate(6 + nick.size)
+        val fullBytes = name.trim().ifBlank { "Echo" }.toByteArray(StandardCharsets.UTF_8)
+        val validLength = minOf(fullBytes.size, 7)
+        val nickBytes = fullBytes.copyOfRange(0, validLength)
+        
+        val buf = ByteBuffer.allocate(6 + nickBytes.size).order(java.nio.ByteOrder.BIG_ENDIAN)
         buf.put(NICK_MAGIC_0)
         buf.put(NICK_MAGIC_1)
         buf.putInt(shortId)
-        buf.put(nick)
+        buf.put(nickBytes)
         return buf.array()
     }
 
@@ -583,6 +591,7 @@ class BLEMeshManager @Inject constructor(
                     serverConnectedCentrals.remove(key)
                     subscribedCentrals.remove(key)
                     serverConnectedCentralsMtu.remove(key)
+                    serverWriteMutexes.remove(key)
                 }
             }
 
@@ -698,10 +707,10 @@ class BLEMeshManager @Inject constructor(
         Log.i(TAG, "Incoming packet type=${packet.type} from $address")
         if (packet.type == 0x20.toByte()) {
             val frag = BLEFragmentAssemblyBuffer.unpackFragmentPayload(packet.payload) ?: return
-            val full = assemblyBuffer.addFragment(
+            val complete = assemblyBuffer.addFragment(
                 frag.fragmentId, frag.index, frag.total, frag.originalType, frag.data
             ) ?: return
-            val original = BitchatPacket.fromBinaryData(full) ?: return
+            val original = BitchatPacket.fromBinaryData(complete.data) ?: return
             scope.launch { _receivedPackets.emit(address to original) }
         } else {
             scope.launch { _receivedPackets.emit(address to packet) }
@@ -928,46 +937,48 @@ class BLEMeshManager @Inject constructor(
         val excludeKey = excludeAddress.uppercase()
 
         scope.launch {
-            sendMutex.withLock {
-                val clients = clientLinks.filter { (key, link) ->
-                    key != excludeKey && link.ready && link.characteristic != null
-                }
-                val servers = subscribedCentrals.filter { (key, _) ->
-                    key != excludeKey
-                }
+            val clients = clientLinks.filter { (key, link) ->
+                key != excludeKey && link.ready && link.characteristic != null
+            }
+            val servers = subscribedCentrals.filter { (key, _) ->
+                key != excludeKey
+            }
 
-                if (clients.isEmpty() && servers.isEmpty()) {
-                    Log.d(TAG, "No relay targets found (excluding $excludeAddress)")
-                    return@withLock
-                }
+            if (clients.isEmpty() && servers.isEmpty()) {
+                Log.d(TAG, "No relay targets found (excluding $excludeAddress)")
+                return@launch
+            }
 
-                var targetMtu = 23
-                for ((_, link) in clients) {
-                    if (link.mtu > targetMtu) targetMtu = link.mtu
-                }
-                for (key in servers.keys) {
-                    val mtu = serverConnectedCentralsMtu[key.uppercase()] ?: 23
-                    if (mtu > targetMtu) targetMtu = mtu
-                }
+            var targetMtu = 23
+            for ((_, link) in clients) {
+                if (link.mtu > targetMtu) targetMtu = link.mtu
+            }
+            for (key in servers.keys) {
+                val mtu = serverConnectedCentralsMtu[key.uppercase()] ?: 23
+                if (mtu > targetMtu) targetMtu = mtu
+            }
 
-                val maxPayload = maxOf(20, targetMtu - 3)
-                val chunks = if (raw.size <= maxPayload) {
-                    listOf(raw)
-                } else {
-                    fragment(packet, maxOf(20, maxPayload - 32))
-                }
+            val maxPayload = maxOf(20, targetMtu - 3)
+            val chunks = if (raw.size <= maxPayload) {
+                listOf(raw)
+            } else {
+                fragment(packet, maxOf(20, maxPayload - 32))
+            }
 
-                // 1. Notify to subscribed servers
-                for ((_, device) in servers) {
-                    val server = gattServer ?: continue
-                    val characteristic = serverCharacteristic ?: continue
+            // 1. Notify to subscribed servers
+            for ((_, device) in servers) {
+                val server = gattServer ?: continue
+                val characteristic = serverCharacteristic ?: continue
+                launch {
                     notifyToCentral(server, characteristic, device, chunks)
                     Log.i(TAG, "Relayed via notify → ${device.address}")
                 }
+            }
 
-                // 2. Write to active clients
-                for ((_, link) in clients) {
-                    val characteristic = link.characteristic ?: continue
+            // 2. Write to active clients
+            for ((_, link) in clients) {
+                val characteristic = link.characteristic ?: continue
+                launch {
                     writeChunks(link.gatt, characteristic, chunks, link)
                     Log.i(TAG, "Relayed via client write → ${link.address}")
                 }
@@ -984,13 +995,11 @@ class BLEMeshManager @Inject constructor(
         setupGattServer(force = false)
 
         scope.launch {
-            val ok = sendMutex.withLock {
-                try {
-                    deliverPacket(deviceAddress, packet)
-                } catch (e: Exception) {
-                    Log.e(TAG, "sendPacket error", e)
-                    false
-                }
+            val ok = try {
+                deliverPacket(deviceAddress, packet)
+            } catch (e: Exception) {
+                Log.e(TAG, "sendPacket error", e)
+                false
             }
             Log.i(TAG, "sendPacket done ok=$ok")
             callback(ok)
@@ -1016,10 +1025,28 @@ class BLEMeshManager @Inject constructor(
             }
         }
         val maxPayload = maxOf(20, targetMtu - 3)
+
+        // Calculate overhead of the fragmentation BitchatPacket (excluding chunk data)
+        val dummyPacket = BitchatPacket(
+            version = packet.version,
+            type = 0x20,
+            senderID = packet.senderID,
+            recipientID = packet.recipientID,
+            timestamp = packet.timestamp,
+            payload = ByteArray(0),
+            signature = null,
+            ttl = packet.ttl,
+            route = packet.route,
+            isRSR = packet.isRSR
+        )
+        val dummyRaw = dummyPacket.toBinaryData(padding = false) ?: ByteArray(0)
+        val overhead = dummyRaw.size + 13 // 13 bytes for fragment header (fragmentId (8) + index (2) + total (2) + originalType (1))
+
+        val chunkSize = maxOf(20, targetMtu - 3 - overhead)
         val chunks = if (raw.size <= maxPayload) {
             listOf(raw)
         } else {
-            fragment(packet, maxOf(20, maxPayload - 32))
+            fragment(packet, chunkSize)
         }
 
         var notified = false
@@ -1113,15 +1140,22 @@ class BLEMeshManager @Inject constructor(
         } ?: return
 
         val nick = _discoveredDevices.value.find { it.id.equals(address, ignoreCase = true) }?.name ?: ""
-        if (!connecting.contains(key)) {
-            openClientLink(device, nick)
+        if (connecting.add(key)) {
+            scope.launch {
+                try {
+                    openClientLink(device, nick)
+                } finally {
+                    connecting.remove(key)
+                }
+            }
         }
 
         withTimeoutOrNull(8_000) {
             while (true) {
                 val link = clientLinks[key]
-                if (link?.characteristic != null) return@withTimeoutOrNull
-                delay(200)
+                if (link?.characteristic != null && link.ready) return@withTimeoutOrNull
+                if (!connecting.contains(key) && link == null) return@withTimeoutOrNull // Abort early if connect failed
+                delay(100)
             }
         }
     }
@@ -1131,7 +1165,7 @@ class BLEMeshManager @Inject constructor(
         characteristic: BluetoothGattCharacteristic,
         chunks: List<ByteArray>,
         link: ClientLink
-    ): Boolean {
+    ): Boolean = link.writeMutex.withLock {
         link.lastUsed = System.currentTimeMillis()
         var allOk = true
         for ((i, chunk) in chunks.withIndex()) {
@@ -1161,7 +1195,11 @@ class BLEMeshManager @Inject constructor(
                 allOk = false
                 break
             }
-            val status = withTimeoutOrNull(5_000) { waiter.await() }
+            val status = try {
+                withTimeoutOrNull(5_000) { waiter.await() }
+            } finally {
+                link.pendingWrite = null
+            }
             if (status == null) {
                 // Some stacks never callback for write-without-response; treat as ok
                 Log.d(TAG, "Write chunk $i no callback — assuming sent")
@@ -1172,7 +1210,7 @@ class BLEMeshManager @Inject constructor(
             }
             delay(25)
         }
-        return allOk
+        return@withLock allOk
     }
 
     private suspend fun notifyChunks(peerKey: String, chunks: List<ByteArray>): Boolean {
@@ -1198,29 +1236,32 @@ class BLEMeshManager @Inject constructor(
         central: BluetoothDevice,
         chunks: List<ByteArray>
     ): Boolean {
-        var allOk = true
-        for (chunk in chunks) {
-            val ok = try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    server.notifyCharacteristicChanged(central, characteristic, false, chunk) ==
-                        BluetoothStatusCodes.SUCCESS
-                } else {
-                    @Suppress("DEPRECATION")
-                    run {
-                        characteristic.value = chunk
-                        server.notifyCharacteristicChanged(central, characteristic, false)
+        val mutex = serverWriteMutexes.getOrPut(central.address.uppercase()) { Mutex() }
+        return mutex.withLock {
+            var allOk = true
+            for (chunk in chunks) {
+                val ok = try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        server.notifyCharacteristicChanged(central, characteristic, false, chunk) ==
+                            BluetoothStatusCodes.SUCCESS
+                    } else {
+                        @Suppress("DEPRECATION")
+                        run {
+                            characteristic.value = chunk
+                            server.notifyCharacteristicChanged(central, characteristic, false)
+                        }
                     }
+                } catch (e: SecurityException) {
+                    Log.e(TAG, "notify denied", e)
+                    false
                 }
-            } catch (e: SecurityException) {
-                Log.e(TAG, "notify denied", e)
-                false
+                if (!ok) {
+                    allOk = false
+                }
+                delay(30) // Prevent BLE stack queue saturation
             }
-            if (!ok) {
-                allOk = false
-            }
-            delay(30) // Prevent BLE stack queue saturation
+            allOk
         }
-        return allOk
     }
 
     private fun fragment(packet: BitchatPacket, chunkSize: Int): List<ByteArray> {
@@ -1249,7 +1290,6 @@ class BLEMeshManager @Inject constructor(
         }
     }
 
-    @Synchronized
     private fun upsertDevice(device: NearbyDevice) {
         val verifiedId = verifiedMacToIdentity[device.id.uppercase()]
         val finalDeviceInput = if (verifiedId != null && device.identity != verifiedId) {
@@ -1264,50 +1304,66 @@ class BLEMeshManager @Inject constructor(
             finalDeviceInput
         }
 
-        val list = _discoveredDevices.value.toMutableList()
-        val byId = list.indexOfFirst { it.id.equals(finalDevice.id, true) }
-        val byIdentity = list.indexOfFirst { it.identity == finalDevice.identity }
-        Log.d(TAG, "upsertDevice: incoming=$finalDevice, byId=$byId, byIdentity=$byIdentity")
+        _discoveredDevices.update { current ->
+            val list = current.toMutableList()
+            val byId = list.indexOfFirst { it.id.equals(finalDevice.id, true) }
+            val byIdentity = list.indexOfFirst { it.identity == finalDevice.identity }
+            Log.d(TAG, "upsertDevice: incoming=$finalDevice, byId=$byId, byIdentity=$byIdentity")
 
-        if (byId >= 0) {
-            val existing = list[byId]
-            if (existing.identity.startsWith("dev_") && !finalDevice.identity.startsWith("dev_")) {
-                // Keep premium name and identity, update RSSI and timestamp
-                Log.d(TAG, "upsertDevice: Keep existing premium byId -> existing=$existing")
-                list[byId] = existing.copy(
-                    rssi = finalDevice.rssi,
-                    discoveredAt = finalDevice.discoveredAt
-                )
-            } else {
-                Log.d(TAG, "upsertDevice: Replace existing byId -> incoming=$finalDevice")
-                list[byId] = finalDevice
-                // Remove duplicate of the same identity at another index (rotated MAC)
-                val otherIdx = list.indexOfFirst { it.identity == finalDevice.identity && !it.id.equals(finalDevice.id, true) }
-                if (otherIdx >= 0) {
-                    list.removeAt(otherIdx)
+            if (byId >= 0) {
+                val existing = list[byId]
+                val nameToKeep = if (finalDevice.name.startsWith("Nearby ") && !existing.name.startsWith("Nearby ")) {
+                    existing.name
+                } else {
+                    finalDevice.name
                 }
-            }
-        } else if (byIdentity >= 0) {
-            val existing = list[byIdentity]
-            if (existing.identity.startsWith("dev_") && !finalDevice.identity.startsWith("dev_")) {
-                // Keep premium name, update MAC address and signal metadata
-                Log.d(TAG, "upsertDevice: Keep existing premium byIdentity -> existing=$existing, newMac=${finalDevice.id}")
-                list[byIdentity] = existing.copy(
-                    id = finalDevice.id,
-                    rssi = finalDevice.rssi,
-                    discoveredAt = finalDevice.discoveredAt
-                )
+
+                if (existing.identity.startsWith("dev_") && !finalDevice.identity.startsWith("dev_")) {
+                    // Keep premium name and identity, update RSSI and timestamp
+                    Log.d(TAG, "upsertDevice: Keep existing premium byId -> existing=$existing")
+                    list[byId] = existing.copy(
+                        name = nameToKeep,
+                        rssi = finalDevice.rssi,
+                        discoveredAt = finalDevice.discoveredAt
+                    )
+                } else {
+                    Log.d(TAG, "upsertDevice: Replace existing byId -> incoming=$finalDevice")
+                    list[byId] = finalDevice.copy(name = nameToKeep)
+                    // Remove duplicate of the same identity at another index (rotated MAC)
+                    val otherIdx = list.indexOfFirst { it.identity == finalDevice.identity && !it.id.equals(finalDevice.id, true) }
+                    if (otherIdx >= 0) {
+                        list.removeAt(otherIdx)
+                    }
+                }
+            } else if (byIdentity >= 0) {
+                val existing = list[byIdentity]
+                val nameToKeep = if (finalDevice.name.startsWith("Nearby ") && !existing.name.startsWith("Nearby ")) {
+                    existing.name
+                } else {
+                    finalDevice.name
+                }
+
+                if (existing.identity.startsWith("dev_") && !finalDevice.identity.startsWith("dev_")) {
+                    // Keep premium name, update MAC address and signal metadata
+                    Log.d(TAG, "upsertDevice: Keep existing premium byIdentity -> existing=$existing, newMac=${finalDevice.id}")
+                    list[byIdentity] = existing.copy(
+                        id = finalDevice.id,
+                        name = nameToKeep,
+                        rssi = finalDevice.rssi,
+                        discoveredAt = finalDevice.discoveredAt
+                    )
+                } else {
+                    Log.d(TAG, "upsertDevice: Replace existing byIdentity -> incoming=$finalDevice")
+                    list[byIdentity] = finalDevice.copy(name = nameToKeep)
+                }
             } else {
-                Log.d(TAG, "upsertDevice: Replace existing byIdentity -> incoming=$finalDevice")
-                list[byIdentity] = finalDevice
+                Log.d(TAG, "upsertDevice: Add new device -> incoming=$finalDevice")
+                list.add(finalDevice)
             }
-        } else {
-            Log.d(TAG, "upsertDevice: Add new device -> incoming=$finalDevice")
-            list.add(finalDevice)
+            list.sortByDescending { it.rssi }
+            Log.d(TAG, "upsertDevice result: $list")
+            list
         }
-        val resultList = list.sortedByDescending { it.rssi }.take(6)
-        Log.d(TAG, "upsertDevice result: $resultList")
-        _discoveredDevices.value = resultList
     }
 
     @Synchronized
@@ -1327,22 +1383,21 @@ class BLEMeshManager @Inject constructor(
             }
         }
 
-        val kept = _discoveredDevices.value.filter { device ->
-            val key = device.id.uppercase()
-            val isConnected = clientLinks.containsKey(key) || serverConnectedCentrals.containsKey(key)
-            isConnected || (now - device.discoveredAt < 12_000)
-        }
-        val updated = kept.map { device ->
-            val key = device.id.uppercase()
-            val isConnected = clientLinks.containsKey(key) || serverConnectedCentrals.containsKey(key)
-            if (isConnected) {
-                device.copy(discoveredAt = now)
-            } else {
-                device
+        _discoveredDevices.update { current ->
+            val kept = current.filter { device ->
+                val key = device.id.uppercase()
+                val isConnected = clientLinks.containsKey(key) || serverConnectedCentrals.containsKey(key)
+                isConnected || (now - device.discoveredAt < 12_000)
             }
-        }
-        if (updated != _discoveredDevices.value) {
-            _discoveredDevices.value = updated
+            kept.map { device ->
+                val key = device.id.uppercase()
+                val isConnected = clientLinks.containsKey(key) || serverConnectedCentrals.containsKey(key)
+                if (isConnected) {
+                    device.copy(discoveredAt = now)
+                } else {
+                    device
+                }
+            }
         }
     }
 
