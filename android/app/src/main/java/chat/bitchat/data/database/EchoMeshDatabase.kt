@@ -5,7 +5,7 @@ import androidx.room.RoomDatabase
 
 @Database(
     entities = [UserProfile::class, Peer::class, MessageEntity::class],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class EchoMeshDatabase : RoomDatabase() {
