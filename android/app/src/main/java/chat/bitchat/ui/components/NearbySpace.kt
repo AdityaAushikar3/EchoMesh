@@ -61,13 +61,16 @@ import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
+import androidx.compose.ui.graphics.drawscope.rotate
+
 @Composable
 fun NearbySpace(
     devices: List<NearbyDevice>,
     youName: String,
     onPersonClick: (NearbyDevice) -> Unit,
     modifier: Modifier = Modifier,
-    selectedId: String? = null
+    selectedId: String? = null,
+    isScanning: Boolean = true
 ) {
     val reduced = rememberReducedMotion()
     val floatTransition = rememberInfiniteTransition(label = "float")
@@ -86,7 +89,7 @@ fun NearbySpace(
         initialValue = 0.25f,
         targetValue = 1.0f,
         animationSpec = infiniteRepeatable(
-            animation = tween(if (reduced) 1 else 3200, easing = LinearEasing),
+            animation = tween(if (reduced || !isScanning) 1 else 3200, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "pulseScale"
@@ -95,10 +98,20 @@ fun NearbySpace(
         initialValue = 0.5f,
         targetValue = 0f,
         animationSpec = infiniteRepeatable(
-            animation = tween(if (reduced) 1 else 3200, easing = LinearEasing),
+            animation = tween(if (reduced || !isScanning) 1 else 3200, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "pulseAlpha"
+    )
+    val sweepTransition = rememberInfiniteTransition(label = "spaceSweep")
+    val sweepAngle by sweepTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(if (reduced || !isScanning) 1 else 5000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "sweepAngle"
     )
 
     // Smooth RSSI using Exponential Moving Average (EMA) to avoid teleporting/jittering avatars
@@ -124,6 +137,8 @@ fun NearbySpace(
 
     val ringPadding = with(LocalDensity.current) { EchoSpace.md.toPx() }
 
+    val accent = EchoAccent
+
     BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
@@ -133,13 +148,13 @@ fun NearbySpace(
                 val radiusBase = (minOf(maxW, maxH) - ringPadding * 2f) / 2f
                 val c = Offset(maxW / 2f, maxH / 2f)
 
-                // Expanding glowing radar pulse wave
-                if (!reduced && pulseAlpha > 0f) {
+                // Expanding glowing radar pulse wave (only when scanning)
+                if (isScanning && !reduced && pulseAlpha > 0f) {
                     drawCircle(
                         brush = Brush.radialGradient(
                             colors = listOf(
-                                EchoAccent.copy(alpha = pulseAlpha * 0.35f),
-                                EchoAccent.copy(alpha = pulseAlpha * 0.08f),
+                                accent.copy(alpha = pulseAlpha * 0.35f),
+                                accent.copy(alpha = pulseAlpha * 0.08f),
                                 Color.Transparent
                             ),
                             center = c,
@@ -150,7 +165,7 @@ fun NearbySpace(
                     )
                 }
 
-                val ringColor = EchoAccent.copy(alpha = 0.12f * 0.9f)
+                val ringColor = accent.copy(alpha = 0.12f * 0.9f)
                 listOf(0.28f, 0.52f, 0.78f).forEach { f ->
                     drawCircle(
                         color = ringColor,
@@ -158,6 +173,24 @@ fun NearbySpace(
                         center = c,
                         style = Stroke(width = 1.dp.toPx())
                     )
+                }
+
+                // Sweeping holographic radar beam line (only when scanning is ON)
+                if (isScanning && !reduced) {
+                    rotate(sweepAngle, pivot = c) {
+                        drawCircle(
+                            brush = Brush.sweepGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    accent.copy(alpha = 0.02f),
+                                    accent.copy(alpha = 0.22f)
+                                ),
+                                center = c
+                            ),
+                            radius = radiusBase,
+                            center = c
+                        )
+                    }
                 }
             }
     ) {
@@ -232,6 +265,17 @@ fun NearbySpace(
                     onClick = { onPersonClick(device) }
                 )
             }
+        }
+        if (smoothedDevices.size > sortedDevices.size) {
+            val remaining = smoothedDevices.size - sortedDevices.size
+            Text(
+                text = "+$remaining other${if (remaining == 1) "" else "s"} nearby · view in Discover",
+                style = MaterialTheme.typography.labelSmall,
+                color = EchoAccent.copy(alpha = 0.8f),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = EchoSpace.md)
+            )
         }
     }
 }

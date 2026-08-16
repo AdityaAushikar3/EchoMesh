@@ -16,3 +16,4 @@ android/local.properties
 android/.cxx/
 android/captures/
 android/.kotlin/
+android/jdk17/

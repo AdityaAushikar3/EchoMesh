@@ -38,11 +38,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.unit.dp
 import chat.bitchat.data.database.MessageEntity
 import chat.bitchat.ui.theme.EchoAccent
+import chat.bitchat.ui.theme.EchoAccentSoft
 import chat.bitchat.ui.theme.EchoDanger
 import chat.bitchat.ui.theme.EchoElevated
 import chat.bitchat.ui.theme.EchoRadius
@@ -107,10 +109,18 @@ fun EchoMessageBubble(
         Text(
             text = message.content,
             style = MaterialTheme.typography.bodyLarge,
-            color = EchoTextPrimary,
+            color = if (isOwn) EchoTextOnAccent else EchoTextPrimary,
             modifier = Modifier
                 .clip(RoundedCornerShape(EchoRadius.md))
-                .background(if (isOwn) EchoAccent.copy(alpha = 0.18f) else EchoElevated)
+                .background(
+                    brush = if (isOwn) {
+                        Brush.horizontalGradient(
+                            colors = listOf(EchoAccentSoft.copy(alpha = 0.82f), EchoAccent.copy(alpha = 0.95f))
+                        )
+                    } else {
+                        SolidColor(EchoElevated)
+                    }
+                )
                 .padding(horizontal = EchoSpace.md, vertical = EchoSpace.sm)
         )
         Spacer(modifier = Modifier.size(4.dp))

@@ -1,8 +1,10 @@
 package chat.bitchat.feature.settings
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -104,6 +106,48 @@ fun SettingsView(
                 style = MaterialTheme.typography.labelMedium,
                 color = EchoTextTertiary
             )
+
+            Spacer(modifier = Modifier.height(EchoSpace.xl))
+
+            // Appearance / Theme Section
+            EchoSectionLabel(text = "Appearance")
+            Spacer(modifier = Modifier.height(EchoSpace.sm))
+            Text(
+                text = "Choose how EchoMesh looks on your device.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = EchoTextSecondary
+            )
+            Spacer(modifier = Modifier.height(EchoSpace.md))
+            val currentContext = androidx.compose.ui.platform.LocalContext.current
+            val activeTheme by chat.bitchat.ui.theme.ThemeConfig.themeMode
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(EchoRadius.md))
+                    .background(EchoElevated)
+                    .padding(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                listOf("system" to "System", "light" to "Light", "dark" to "Dark").forEach { (mode, label) ->
+                    val isSelected = activeTheme == mode
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (isSelected) EchoAccent else androidx.compose.ui.graphics.Color.Transparent)
+                            .clickable { viewModel.setThemeMode(currentContext, mode) }
+                            .padding(vertical = EchoSpace.sm),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = label,
+                            color = if (isSelected) chat.bitchat.ui.theme.EchoTextOnAccent else EchoTextPrimary,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                        )
+                    }
+                }
+            }
 
             Spacer(modifier = Modifier.height(EchoSpace.xl))
 

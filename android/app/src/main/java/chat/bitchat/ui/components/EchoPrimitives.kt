@@ -52,6 +52,7 @@ import chat.bitchat.ui.theme.EchoTextPrimary
 import chat.bitchat.ui.theme.EchoTextSecondary
 import chat.bitchat.ui.theme.EchoTextTertiary
 import chat.bitchat.ui.theme.EchoTextOnAccent
+import chat.bitchat.ui.theme.EchoVoid
 import chat.bitchat.ui.theme.rememberReducedMotion
 
 @Composable
@@ -106,20 +107,9 @@ fun EchoGhostButton(
 fun EchoEmptyState(
     title: String,
     subtitle: String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    illustration: @Composable () -> Unit
 ) {
-    val reduced = rememberReducedMotion()
-    val transition = rememberInfiniteTransition(label = "radarSweep")
-    val sweepAngle by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(4000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "sweepAngle"
-    )
-
     Column(
         modifier = modifier.padding(EchoSpace.xl),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -129,50 +119,7 @@ fun EchoEmptyState(
             modifier = Modifier.size(120.dp),
             contentAlignment = Alignment.Center
         ) {
-            Canvas(modifier = Modifier.size(110.dp)) {
-                val center = Offset(size.width / 2f, size.height / 2f)
-                val maxRadius = size.width / 2f
-
-                // Concentric radar grid rings
-                listOf(0.35f, 0.68f, 1.0f).forEach { fraction ->
-                    drawCircle(
-                        color = EchoAccent.copy(alpha = 0.12f),
-                        radius = maxRadius * fraction,
-                        center = center,
-                        style = Stroke(width = 1.dp.toPx())
-                    )
-                }
-
-                // Sweeping holographic beam
-                if (!reduced) {
-                    rotate(sweepAngle, pivot = center) {
-                        drawCircle(
-                            brush = Brush.sweepGradient(
-                                colors = listOf(
-                                    Color.Transparent,
-                                    EchoAccent.copy(alpha = 0.03f),
-                                    EchoAccent.copy(alpha = 0.28f)
-                                ),
-                                center = center
-                            ),
-                            radius = maxRadius,
-                            center = center
-                        )
-                    }
-                }
-
-                // Central glowing beacon dot
-                drawCircle(
-                    color = EchoAccent.copy(alpha = 0.35f),
-                    radius = 8.dp.toPx(),
-                    center = center
-                )
-                drawCircle(
-                    color = EchoAccent,
-                    radius = 3.5.dp.toPx(),
-                    center = center
-                )
-            }
+            illustration()
         }
         Spacer(modifier = Modifier.height(EchoSpace.lg))
         Text(
@@ -188,6 +135,224 @@ fun EchoEmptyState(
             style = MaterialTheme.typography.bodyMedium,
             color = EchoTextTertiary,
             textAlign = TextAlign.Center
+        )
+    }
+}
+
+@Composable
+fun EchoEmptyState(
+    title: String,
+    subtitle: String,
+    modifier: Modifier = Modifier,
+    isScanning: Boolean = false
+) {
+    EchoEmptyState(
+        title = title,
+        subtitle = subtitle,
+        modifier = modifier
+    ) {
+        DefaultRadarIllustration(isScanning = isScanning)
+    }
+}
+
+@Composable
+fun DefaultRadarIllustration(
+    isScanning: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val reduced = rememberReducedMotion()
+    val transition = rememberInfiniteTransition(label = "radarSweep")
+    val sweepAngle by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(if (reduced || !isScanning) 1 else 4000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "sweepAngle"
+    )
+
+    val accent = EchoAccent
+    val textTertiary = EchoTextTertiary
+
+    Canvas(modifier = modifier.size(110.dp)) {
+        val center = Offset(size.width / 2f, size.height / 2f)
+        val maxRadius = size.width / 2f
+
+        // Concentric radar grid rings
+        listOf(0.35f, 0.68f, 1.0f).forEach { fraction ->
+            drawCircle(
+                color = accent.copy(alpha = 0.12f),
+                radius = maxRadius * fraction,
+                center = center,
+                style = Stroke(width = 1.dp.toPx())
+            )
+        }
+
+        // Sweeping holographic beam (ONLY when listening is ON)
+        if (isScanning && !reduced) {
+            rotate(sweepAngle, pivot = center) {
+                drawCircle(
+                    brush = Brush.sweepGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            accent.copy(alpha = 0.03f),
+                            accent.copy(alpha = 0.28f)
+                        ),
+                        center = center
+                    ),
+                    radius = maxRadius,
+                    center = center
+                )
+            }
+        }
+
+        // Central glowing beacon dot
+        drawCircle(
+            color = accent.copy(alpha = if (isScanning) 0.35f else 0.12f),
+            radius = 8.dp.toPx(),
+            center = center
+        )
+        drawCircle(
+            color = if (isScanning) accent else textTertiary,
+            radius = 3.5.dp.toPx(),
+            center = center
+        )
+    }
+}
+
+@Composable
+fun DiscoverCompassIllustration(modifier: Modifier = Modifier) {
+    val reduced = rememberReducedMotion()
+    val transition = rememberInfiniteTransition(label = "compass")
+    val angle by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(if (reduced) 1 else 10000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "compassAngle"
+    )
+
+    val accent = EchoAccent
+    val voidBg = EchoVoid
+
+    Canvas(modifier = modifier.size(110.dp)) {
+        val center = Offset(size.width / 2f, size.height / 2f)
+        val maxR = size.width / 2f
+
+        // Outer ring
+        drawCircle(
+            color = accent.copy(alpha = 0.18f),
+            radius = maxR,
+            center = center,
+            style = Stroke(width = 1.5.dp.toPx())
+        )
+        // Inner ring
+        drawCircle(
+            color = accent.copy(alpha = 0.08f),
+            radius = maxR * 0.7f,
+            center = center,
+            style = Stroke(width = 1.dp.toPx())
+        )
+
+        // North-South-East-West ticks
+        val tickLen = 6.dp.toPx()
+        listOf(0f, 90f, 180f, 270f).forEach { deg ->
+            rotate(deg, pivot = center) {
+                drawLine(
+                    color = accent.copy(alpha = 0.4f),
+                    start = Offset(center.x, center.y - maxR),
+                    end = Offset(center.x, center.y - maxR + tickLen),
+                    strokeWidth = 1.5.dp.toPx()
+                )
+            }
+        }
+
+        // Rotating compass needle
+        rotate(angle, pivot = center) {
+            // Draw North pointer (solid Accent)
+            val pathNorth = androidx.compose.ui.graphics.Path().apply {
+                moveTo(center.x, center.y - maxR * 0.8f)
+                lineTo(center.x - 8.dp.toPx(), center.y)
+                lineTo(center.x + 8.dp.toPx(), center.y)
+                close()
+            }
+            drawPath(pathNorth, color = accent)
+
+            // Draw South pointer (Muted Accent)
+            val pathSouth = androidx.compose.ui.graphics.Path().apply {
+                moveTo(center.x, center.y + maxR * 0.8f)
+                lineTo(center.x - 8.dp.toPx(), center.y)
+                lineTo(center.x + 8.dp.toPx(), center.y)
+                close()
+            }
+            drawPath(pathSouth, color = accent.copy(alpha = 0.3f))
+        }
+
+        // Center hub
+        drawCircle(color = voidBg, radius = 5.dp.toPx(), center = center)
+        drawCircle(color = accent, radius = 3.dp.toPx(), center = center)
+    }
+}
+
+@Composable
+fun ChatsEmptyIllustration(modifier: Modifier = Modifier) {
+    val accent = EchoAccent
+    val elevated = EchoElevated
+
+    Canvas(modifier = modifier.size(110.dp)) {
+        // Draw background bubble (Muted)
+        val bgBubbleRect = androidx.compose.ui.geometry.RoundRect(
+            left = 38.dp.toPx(),
+            top = 22.dp.toPx(),
+            right = 92.dp.toPx(),
+            bottom = 62.dp.toPx(),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(10.dp.toPx())
+        )
+        val bgBubblePath = androidx.compose.ui.graphics.Path().apply {
+            addRoundRect(bgBubbleRect)
+            // Tail
+            moveTo(80.dp.toPx(), 62.dp.toPx())
+            lineTo(88.dp.toPx(), 72.dp.toPx())
+            lineTo(88.dp.toPx(), 62.dp.toPx())
+            close()
+        }
+        drawPath(bgBubblePath, color = accent.copy(alpha = 0.12f))
+        drawPath(bgBubblePath, color = accent.copy(alpha = 0.25f), style = Stroke(width = 1.dp.toPx()))
+
+        // Draw foreground bubble (Bright)
+        val fgBubbleRect = androidx.compose.ui.geometry.RoundRect(
+            left = 18.dp.toPx(),
+            top = 38.dp.toPx(),
+            right = 72.dp.toPx(),
+            bottom = 78.dp.toPx(),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(10.dp.toPx())
+        )
+        val fgBubblePath = androidx.compose.ui.graphics.Path().apply {
+            addRoundRect(fgBubbleRect)
+            // Tail
+            moveTo(30.dp.toPx(), 78.dp.toPx())
+            lineTo(22.dp.toPx(), 88.dp.toPx())
+            lineTo(22.dp.toPx(), 78.dp.toPx())
+            close()
+        }
+        drawPath(fgBubblePath, color = elevated)
+        drawPath(fgBubblePath, color = accent.copy(alpha = 0.8f), style = Stroke(width = 1.5.dp.toPx()))
+
+        // Draw chat line signals inside foreground bubble
+        drawLine(
+            color = accent.copy(alpha = 0.6f),
+            start = Offset(30.dp.toPx(), 52.dp.toPx()),
+            end = Offset(60.dp.toPx(), 52.dp.toPx()),
+            strokeWidth = 2.dp.toPx()
+        )
+        drawLine(
+            color = accent.copy(alpha = 0.6f),
+            start = Offset(30.dp.toPx(), 62.dp.toPx()),
+            end = Offset(50.dp.toPx(), 62.dp.toPx()),
+            strokeWidth = 2.dp.toPx()
         )
     }
 }

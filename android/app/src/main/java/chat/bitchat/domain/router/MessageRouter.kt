@@ -32,7 +32,15 @@ class MessageRouter @Inject constructor(
     private val blockedPeerDao = database.blockedPeerDao()
     private val seenPackets = ConcurrentHashMap<String, Long>()
 
+    @Volatile
+    private var cachedMyName: String? = null
+
     init {
+        scope.launch {
+            userProfileDao.getProfile().collect { p ->
+                cachedMyName = p?.name?.takeIf { it.isNotBlank() }
+            }
+        }
         observeIncomingPackets()
         startPruningLoop()
     }
@@ -68,12 +76,15 @@ class MessageRouter @Inject constructor(
                     return@collect
                 }
 
-                // Calculate my own PeerID (stable identity hash)
+                // Calculate my own PeerID (stable identity hash and display name hash)
                 val myStablePeerId = getMockPeerID(bleMeshManager.localIdentity)
+                val myName = cachedMyName
+                val myNamePeerId = myName?.let { getMockPeerID(it) }
 
                 // 4. Recipient Check (packet-level)
                 val isForMe = packet.recipientID == null ||
-                        packet.recipientID.contentEquals(myStablePeerId)
+                        packet.recipientID.contentEquals(myStablePeerId) ||
+                        (myNamePeerId != null && packet.recipientID.contentEquals(myNamePeerId))
 
                 val targetIdHex = packet.recipientID?.toHexString() ?: "null (public)"
                 val localIdHex = myStablePeerId.toHexString()
@@ -127,6 +138,7 @@ class MessageRouter @Inject constructor(
                             if (pubKeyStr != null) {
                                 peerDao.updatePeerPublicKey(identity, pubKeyStr)
                                 Log.i("MessageRouter", "[E2EE] Stored public key for $identity")
+                                attemptRetroactiveDecryption(identity, pubKeyStr)
                             }
                             Log.i("MessageRouter", "Stored profile details for $identity")
                         } catch (e: Exception) {
@@ -155,7 +167,7 @@ class MessageRouter @Inject constructor(
                     // 4b. Secondary recipient check using stable identity or display name
                     if (message.isPrivate && message.recipientNickname != null) {
                         val stableIdentity = bleMeshManager.localIdentity
-                        val myName = userProfileDao.getProfileDirect()?.name?.takeIf { it.isNotBlank() }
+                        val myName = cachedMyName
                         val recipMatch = message.recipientNickname.equals(stableIdentity, ignoreCase = true) ||
                                 (myName != null && message.recipientNickname.equals(myName, ignoreCase = true))
                         if (!recipMatch) {
@@ -200,12 +212,12 @@ class MessageRouter @Inject constructor(
                                 Log.i("MessageRouter", "[E2EE] Decrypted incoming message from $senderStableId")
                                 decrypted
                             } else {
-                                Log.e("MessageRouter", "[E2EE] Failed to decrypt message from $senderStableId")
-                                "[Encrypted Message]"
+                                Log.e("MessageRouter", "[E2EE] Decryption pending key for $senderStableId")
+                                message.content
                             }
                         } else {
-                            Log.w("MessageRouter", "[E2EE] Missing sender public key or local private key for $senderStableId")
-                            "[Encrypted Message]"
+                            Log.w("MessageRouter", "[E2EE] Preserving ciphertext pending public key for $senderStableId")
+                            message.content
                         }
                     } else {
                         message.content
@@ -444,6 +456,27 @@ class MessageRouter @Inject constructor(
                 clean == "someone" ||
                 clean.startsWith("nearby") ||
                 clean.contains(":")
+    }
+
+    private fun attemptRetroactiveDecryption(senderStableId: String, publicKeyStr: String) {
+        scope.launch {
+            try {
+                val pubKeyBytes = android.util.Base64.decode(publicKeyStr, android.util.Base64.NO_WRAP)
+                val myPrivateKey = chat.bitchat.core.security.KeyManager.getPrivateKey() ?: return@launch
+                val messages = messageDao.getPrivateMessagesForPeer(senderStableId).firstOrNull() ?: return@launch
+                for (msg in messages) {
+                    if (msg.content.startsWith(chat.bitchat.core.security.CryptoUtil.E2EE_PREFIX)) {
+                        val decrypted = chat.bitchat.core.security.CryptoUtil.decrypt(msg.content, senderStableId, myPrivateKey, pubKeyBytes)
+                        if (decrypted != null) {
+                            messageDao.insertMessage(msg.copy(content = decrypted))
+                            Log.i("MessageRouter", "[E2EE] Retroactively decrypted message id=${msg.id}")
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("MessageRouter", "Failed retroactive decryption for $senderStableId", e)
+            }
+        }
     }
 
     private fun getMockPeerID(name: String): ByteArray {

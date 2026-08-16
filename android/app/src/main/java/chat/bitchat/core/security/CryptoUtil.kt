@@ -23,7 +23,7 @@ object CryptoUtil {
     private val sharedSecretCache = ConcurrentHashMap<String, SecretKey>()
 
     fun getSharedSecret(peerId: String, myPrivateKey: PrivateKey, theirPublicKeyBytes: ByteArray): SecretKey? {
-        val cacheKey = "$peerId-${theirPublicKeyBytes.contentHashCode()}"
+        val cacheKey = theirPublicKeyBytes.contentHashCode().toString()
         val cached = sharedSecretCache[cacheKey]
         if (cached != null) return cached
 

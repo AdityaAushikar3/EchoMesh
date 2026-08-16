@@ -984,8 +984,13 @@ class BLEMeshManager @Inject constructor(
             val dummyRaw = dummyPacket.toBinaryData(padding = false) ?: ByteArray(0)
             val overhead = dummyRaw.size + 13 // 13 bytes for fragment header (fragmentId (8) + index (2) + total (2) + originalType (1))
 
-            val chunkSize = maxOf(20, targetMtu - 3 - overhead)
-            val chunks = if (raw.size <= maxPayload) {
+            val maxGattPayload = maxOf(20, targetMtu - 3)
+            val chunkSize = if (targetMtu - 3 > overhead) {
+                targetMtu - 3 - overhead
+            } else {
+                maxGattPayload
+            }
+            val chunks = if (raw.size <= maxGattPayload) {
                 listOf(raw)
             } else {
                 fragment(packet, chunkSize)
@@ -1068,8 +1073,13 @@ class BLEMeshManager @Inject constructor(
         val dummyRaw = dummyPacket.toBinaryData(padding = false) ?: ByteArray(0)
         val overhead = dummyRaw.size + 13 // 13 bytes for fragment header (fragmentId (8) + index (2) + total (2) + originalType (1))
 
-        val chunkSize = maxOf(20, targetMtu - 3 - overhead)
-        val chunks = if (raw.size <= maxPayload) {
+        val maxGattPayload = maxOf(20, targetMtu - 3)
+        val chunkSize = if (targetMtu - 3 > overhead) {
+            targetMtu - 3 - overhead
+        } else {
+            maxGattPayload
+        }
+        val chunks = if (raw.size <= maxGattPayload) {
             listOf(raw)
         } else {
             fragment(packet, chunkSize)

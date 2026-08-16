@@ -29,10 +29,14 @@ import chat.bitchat.ui.theme.EchoTextPrimary
 import chat.bitchat.ui.theme.EchoTextTertiary
 import chat.bitchat.ui.theme.rememberReducedMotion
 
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.drawscope.rotate
+
 @Composable
 fun ScanningState(
     modifier: Modifier = Modifier,
-    label: String = "Finding people"
+    label: String = "Finding people",
+    isScanning: Boolean = true
 ) {
     val reduced = rememberReducedMotion()
     val transition = rememberInfiniteTransition(label = "scan")
@@ -40,7 +44,7 @@ fun ScanningState(
         initialValue = 0.35f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(if (reduced) 1 else 2200, easing = LinearEasing),
+            animation = tween(if (reduced || !isScanning) 1 else 2200, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "pulse"
@@ -49,39 +53,93 @@ fun ScanningState(
         initialValue = 0.45f,
         targetValue = 0f,
         animationSpec = infiniteRepeatable(
-            animation = tween(if (reduced) 1 else 2200, easing = LinearEasing),
+            animation = tween(if (reduced || !isScanning) 1 else 2200, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "alpha"
     )
+    val sweepAngle by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(if (reduced || !isScanning) 1 else 4000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "sweepAngle"
+    )
+
+    val accent = EchoAccent
+    val textTertiary = EchoTextTertiary
 
     Column(
         modifier = modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(120.dp)) {
-            Canvas(modifier = Modifier.size(120.dp)) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(130.dp)) {
+            Canvas(modifier = Modifier.size(130.dp)) {
+                val center = Offset(size.width / 2f, size.height / 2f)
                 val maxR = size.minDimension / 2f
+
+                // Concentric radar grid rings
+                listOf(0.35f, 0.68f, 1.0f).forEach { fraction ->
+                    drawCircle(
+                        color = accent.copy(alpha = 0.12f),
+                        radius = maxR * fraction,
+                        center = center,
+                        style = Stroke(width = 1.dp.toPx())
+                    )
+                }
+
+                // Expanding pulse ring (only when scanning is ON)
+                if (isScanning && !reduced) {
+                    drawCircle(
+                        color = accent.copy(alpha = alpha * 0.55f),
+                        radius = maxR * pulse,
+                        center = center,
+                        style = Stroke(width = 1.2.dp.toPx())
+                    )
+                }
+
+                // Sweeping holographic radar line (only when scanning is ON)
+                if (isScanning && !reduced) {
+                    rotate(sweepAngle, pivot = center) {
+                        drawCircle(
+                            brush = Brush.sweepGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    accent.copy(alpha = 0.03f),
+                                    accent.copy(alpha = 0.35f)
+                                ),
+                                center = center
+                            ),
+                            radius = maxR,
+                            center = center
+                        )
+                    }
+                }
+
+                // Central glowing beacon dot
                 drawCircle(
-                    color = EchoAccent.copy(alpha = alpha * 0.55f),
-                    radius = maxR * pulse,
-                    style = Stroke(width = 1.2.dp.toPx())
+                    color = accent.copy(alpha = if (isScanning) 0.35f else 0.15f),
+                    radius = 8.dp.toPx(),
+                    center = center
                 )
                 drawCircle(
-                    color = EchoAccent.copy(alpha = 0.7f),
-                    radius = 5.dp.toPx()
+                    color = if (isScanning) accent else textTertiary,
+                    radius = 3.5.dp.toPx(),
+                    center = center
                 )
             }
         }
         Spacer(modifier = Modifier.height(EchoSpace.md))
         Text(
-            text = label.uppercase(),
+            text = (if (isScanning) label else "Scanner Paused").uppercase(),
             style = MaterialTheme.typography.labelSmall,
             color = EchoTextTertiary
         )
         Spacer(modifier = Modifier.height(EchoSpace.xxs))
         Text(
-            text = "Listening for people nearby",
+            text = if (isScanning) "Listening for people nearby" else "Tap Listen to start scanning",
             style = MaterialTheme.typography.bodyMedium,
             color = EchoTextPrimary.copy(alpha = 0.75f)
         )

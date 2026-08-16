@@ -13,6 +13,8 @@ import chat.bitchat.domain.router.MessageRouter
 import chat.bitchat.ui.EchoMeshNavHost
 import chat.bitchat.ui.theme.EchoMeshTheme
 import chat.bitchat.ui.theme.EchoVoid
+import chat.bitchat.ui.theme.ThemeConfig
+import androidx.compose.runtime.getValue
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -56,8 +58,18 @@ class MainActivity : ComponentActivity() {
             bluetoothRepository.ensureReady()
         }, 800)
 
+        val prefs = getSharedPreferences("echomesh_prefs", MODE_PRIVATE)
+        val savedTheme = prefs.getString("theme_mode", "system") ?: "system"
+        ThemeConfig.themeMode.value = savedTheme
+
         setContent {
-            EchoMeshTheme(darkTheme = true) {
+            val themeMode by ThemeConfig.themeMode
+            val isDark = when (themeMode) {
+                "light" -> false
+                "dark" -> true
+                else -> androidx.compose.foundation.isSystemInDarkTheme()
+            }
+            EchoMeshTheme(darkTheme = isDark) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = EchoVoid

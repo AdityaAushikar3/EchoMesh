@@ -32,9 +32,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import chat.bitchat.ui.components.ChatsEmptyIllustration
 import chat.bitchat.ui.components.EchoEmptyState
 import chat.bitchat.ui.components.PeerAvatar
 import chat.bitchat.ui.components.StatusDot
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.Icon
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import chat.bitchat.ui.theme.EchoAccent
 import chat.bitchat.ui.theme.EchoElevated
 import chat.bitchat.ui.theme.EchoRadius
@@ -95,19 +102,59 @@ fun ChatsView(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
-            )
+            ) {
+                ChatsEmptyIllustration()
+            }
         } else {
-            @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+            @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class, androidx.compose.material3.ExperimentalMaterial3Api::class)
             LazyColumn(
                 modifier = Modifier.weight(1f),
                 contentPadding = PaddingValues(bottom = EchoSpace.xl),
                 verticalArrangement = Arrangement.spacedBy(EchoSpace.xs)
             ) {
-                items(conversations, key = { it.peerKey }) { convo ->
-                    ConversationRow(
-                        convo = convo,
-                        modifier = Modifier.animateItemPlacement(),
-                        onClick = { onOpenChat(convo.peerKey) }
+                items(conversations, key = { convo -> convo.peerKey }) { convo ->
+                    val dismissState = rememberSwipeToDismissBoxState(
+                        confirmValueChange = { value ->
+                            if (value == SwipeToDismissBoxValue.EndToStart) {
+                                viewModel.deleteConversation(convo.peerKey, convo.displayName)
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                    )
+                    SwipeToDismissBox(
+                        state = dismissState,
+                        enableDismissFromStartToEnd = false,
+                        backgroundContent = {
+                            val color = if (dismissState.dismissDirection == SwipeToDismissBoxValue.EndToStart) {
+                                chat.bitchat.ui.theme.EchoDanger
+                            } else {
+                                Color.Transparent
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(RoundedCornerShape(EchoRadius.md))
+                                    .background(color)
+                                    .padding(horizontal = EchoSpace.md),
+                                contentAlignment = Alignment.CenterEnd
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = "Delete Conversation",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        },
+                        content = {
+                            ConversationRow(
+                                convo = convo,
+                                modifier = Modifier.animateItemPlacement(),
+                                onClick = { onOpenChat(convo.peerKey) }
+                            )
+                        }
                     )
                 }
             }

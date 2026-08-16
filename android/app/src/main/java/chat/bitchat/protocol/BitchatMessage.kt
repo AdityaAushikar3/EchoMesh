@@ -171,49 +171,48 @@ data class BitchatMessage(
 
             // Optional fields
             var originalSender: String? = null
-            if (hasOriginalSender && buffer.hasRemaining()) {
+            if (hasOriginalSender) {
+                if (!buffer.hasRemaining()) return null
                 val len = buffer.get().toInt() and 0xFF
-                if (buffer.remaining() >= len) {
-                    val bytes = ByteArray(len)
-                    buffer.get(bytes)
-                    originalSender = String(bytes, StandardCharsets.UTF_8)
-                }
+                if (buffer.remaining() < len) return null
+                val bytes = ByteArray(len)
+                buffer.get(bytes)
+                originalSender = String(bytes, StandardCharsets.UTF_8)
             }
 
             var recipientNickname: String? = null
-            if (hasRecipientNickname && buffer.hasRemaining()) {
+            if (hasRecipientNickname) {
+                if (!buffer.hasRemaining()) return null
                 val len = buffer.get().toInt() and 0xFF
-                if (buffer.remaining() >= len) {
-                    val bytes = ByteArray(len)
-                    buffer.get(bytes)
-                    recipientNickname = String(bytes, StandardCharsets.UTF_8)
-                }
+                if (buffer.remaining() < len) return null
+                val bytes = ByteArray(len)
+                buffer.get(bytes)
+                recipientNickname = String(bytes, StandardCharsets.UTF_8)
             }
 
             var senderPeerID: PeerID? = null
-            if (hasSenderPeerID && buffer.hasRemaining()) {
+            if (hasSenderPeerID) {
+                if (!buffer.hasRemaining()) return null
                 val len = buffer.get().toInt() and 0xFF
-                if (buffer.remaining() >= len) {
-                    val bytes = ByteArray(len)
-                    buffer.get(bytes)
-                    senderPeerID = PeerID.fromString(String(bytes, StandardCharsets.UTF_8))
-                }
+                if (buffer.remaining() < len) return null
+                val bytes = ByteArray(len)
+                buffer.get(bytes)
+                senderPeerID = PeerID.fromString(String(bytes, StandardCharsets.UTF_8))
             }
 
             var mentions: MutableList<String>? = null
-            if (hasMentions && buffer.hasRemaining()) {
+            if (hasMentions) {
+                if (!buffer.hasRemaining()) return null
                 val count = buffer.get().toInt() and 0xFF
                 if (count > 0) {
                     mentions = mutableListOf()
                     for (i in 0 until count) {
-                        if (buffer.hasRemaining()) {
-                            val len = buffer.get().toInt() and 0xFF
-                            if (buffer.remaining() >= len) {
-                                val bytes = ByteArray(len)
-                                buffer.get(bytes)
-                                mentions.add(String(bytes, StandardCharsets.UTF_8))
-                            }
-                        }
+                        if (!buffer.hasRemaining()) return null
+                        val len = buffer.get().toInt() and 0xFF
+                        if (buffer.remaining() < len) return null
+                        val bytes = ByteArray(len)
+                        buffer.get(bytes)
+                        mentions.add(String(bytes, StandardCharsets.UTF_8))
                     }
                 }
             }

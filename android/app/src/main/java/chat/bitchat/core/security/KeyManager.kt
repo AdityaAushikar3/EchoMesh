@@ -12,9 +12,10 @@ object KeyManager {
     private const val TAG = "KeyManager"
     private const val KEY_ALIAS = "echo_mesh_identity_key"
 
-    init {
-        ensureKeyExists()
-    }
+    @Volatile
+    private var cachedPrivateKey: PrivateKey? = null
+    @Volatile
+    private var cachedPublicKeyBytes: ByteArray? = null
 
     @Synchronized
     private fun ensureKeyExists() {
@@ -34,29 +35,23 @@ object KeyManager {
                 kpg.generateKeyPair()
                 Log.i(TAG, "Generated hardware-backed EC identity key pair")
             }
+            cachedPrivateKey = keyStore.getKey(KEY_ALIAS, null) as? PrivateKey
+            val cert = keyStore.getCertificate(KEY_ALIAS)
+            cachedPublicKeyBytes = cert?.publicKey?.encoded
         } catch (e: Exception) {
             Log.e(TAG, "Failed to initialize Keystore identity key", e)
         }
     }
 
     fun getPublicKeyBytes(): ByteArray {
-        return try {
-            val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-            val cert = keyStore.getCertificate(KEY_ALIAS) ?: return ByteArray(0)
-            cert.publicKey.encoded
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to export public key bytes", e)
-            ByteArray(0)
-        }
+        cachedPublicKeyBytes?.let { return it }
+        ensureKeyExists()
+        return cachedPublicKeyBytes ?: ByteArray(0)
     }
 
     fun getPrivateKey(): PrivateKey? {
-        return try {
-            val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-            keyStore.getKey(KEY_ALIAS, null) as? PrivateKey
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to retrieve private key from Keystore", e)
-            null
-        }
+        cachedPrivateKey?.let { return it }
+        ensureKeyExists()
+        return cachedPrivateKey
     }
 }

@@ -34,4 +34,10 @@ class SettingsViewModel @Inject constructor(
             blockedPeerDao.clearAllBlockedPeers()
         }
     }
+
+    fun setThemeMode(context: android.content.Context, mode: String) {
+        val prefs = context.getSharedPreferences("echomesh_prefs", android.content.Context.MODE_PRIVATE)
+        prefs.edit().putString("theme_mode", mode).apply()
+        chat.bitchat.ui.theme.ThemeConfig.themeMode.value = mode
+    }
 }

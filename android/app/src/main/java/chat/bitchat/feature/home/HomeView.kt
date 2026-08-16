@@ -98,6 +98,7 @@ fun HomeView(
                         devices = devices,
                         youName = youName,
                         selectedId = selectedId,
+                        isScanning = isScanning,
                         onPersonClick = { device ->
                             selectedId = device.id
                             haptics.light()
@@ -109,12 +110,13 @@ fun HomeView(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
                     ) {
-                        ScanningState()
+                        ScanningState(isScanning = true)
                     }
                     SpaceMode.Empty -> EchoEmptyState(
                         title = "No one nearby yet",
-                        subtitle = "Move around to discover people.",
-                        modifier = Modifier.fillMaxSize()
+                        subtitle = "Move around or tap Listen to discover people.",
+                        modifier = Modifier.fillMaxSize(),
+                        isScanning = false
                     )
                 }
             }

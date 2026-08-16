@@ -29,6 +29,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import chat.bitchat.core.bluetooth.NearbyDevice
 import chat.bitchat.ui.components.DistanceIndicator
+import chat.bitchat.ui.components.DiscoverCompassIllustration
 import chat.bitchat.ui.components.EchoEmptyState
 import chat.bitchat.ui.components.EchoSectionLabel
 import chat.bitchat.ui.components.InterestChipRow
@@ -90,7 +91,9 @@ fun DiscoverView(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
-            )
+            ) {
+                DiscoverCompassIllustration()
+            }
         } else {
             LazyColumn(
                 modifier = Modifier.weight(1f),

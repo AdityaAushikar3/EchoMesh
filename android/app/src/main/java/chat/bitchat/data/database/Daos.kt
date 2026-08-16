@@ -106,6 +106,7 @@ interface MessageDao {
         ) latest ON m.conversationId = latest.conversationId
             AND m.timestamp = latest.maxTs
         WHERE m.isPrivate = 1
+        GROUP BY m.conversationId
         ORDER BY m.timestamp DESC
     """)
     fun getLatestMessagePerConversation(): Flow<List<MessageEntity>>

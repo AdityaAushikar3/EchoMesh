@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class ConversationPreview(
@@ -27,7 +28,7 @@ data class ConversationPreview(
 
 @HiltViewModel
 class ChatsViewModel @Inject constructor(
-    database: EchoMeshDatabase,
+    private val database: EchoMeshDatabase,
     bluetoothRepository: BluetoothRepository,
     profileRepository: ProfileRepository
 ) : ViewModel() {
@@ -82,8 +83,24 @@ class ChatsViewModel @Inject constructor(
                 isUnread = isUnread,
                 isBlocked = isBlocked
             )
-        }
+        }.distinctBy { it.peerKey }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun deleteConversation(peerKey: String, displayName: String) {
+        viewModelScope.launch {
+            val peer = database.peerDao().getAllPeersDirect().find {
+                it.peerID.equals(peerKey, ignoreCase = true) ||
+                        it.nickname.equals(displayName, ignoreCase = true)
+            }
+            if (peer != null) {
+                database.peerDao().deletePeer(peer)
+            }
+            database.messageDao().deleteMessagesForPeer(peerKey)
+            if (displayName.isNotBlank() && displayName != peerKey) {
+                database.messageDao().deleteMessagesForPeer(displayName)
+            }
+        }
+    }
 
     private fun conversationKey(msg: MessageEntity, selfNames: Set<String>): String {
         val senderIsSelf = msg.sender.lowercase() in selfNames

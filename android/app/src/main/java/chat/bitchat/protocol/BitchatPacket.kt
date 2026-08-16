@@ -32,13 +32,13 @@ data class BitchatPacket(
             if (!signature.contentEquals(other.signature)) return false
         } else if (other.signature != null) return false
         if (ttl != other.ttl) return false
-        if (route != other.route) {
-            if (route == null || other.route == null) return false
+        if (route != null) {
+            if (other.route == null) return false
             if (route.size != other.route.size) return false
             for (i in route.indices) {
                 if (!route[i].contentEquals(other.route[i])) return false
             }
-        }
+        } else if (other.route != null) return false
         if (isRSR != other.isRSR) return false
 
         return true
@@ -53,7 +53,13 @@ data class BitchatPacket(
         result = 31 * result + payload.contentHashCode()
         result = 31 * result + (signature?.contentHashCode() ?: 0)
         result = 31 * result + ttl.toInt()
-        result = 31 * result + (route?.hashCode() ?: 0)
+        var routeHash = 0
+        if (route != null) {
+            for (hop in route) {
+                routeHash = 31 * routeHash + hop.contentHashCode()
+            }
+        }
+        result = 31 * result + routeHash
         result = 31 * result + isRSR.hashCode()
         return result
     }

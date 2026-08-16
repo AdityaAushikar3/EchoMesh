@@ -36,7 +36,7 @@ object MessagePadding {
     fun optimalBlockSize(dataSize: Int): Int {
         val totalSize = dataSize + 16
         for (blockSize in BLOCK_SIZES) {
-            if (totalSize <= blockSize) {
+            if (totalSize <= blockSize && (blockSize - dataSize) <= 255) {
                 return blockSize
             }
         }
