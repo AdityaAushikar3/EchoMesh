@@ -88,6 +88,7 @@ class BLEMeshManager @Inject constructor(
 
     private val assemblyBuffer = BLEFragmentAssemblyBuffer()
     private val serverWriteMutexes = ConcurrentHashMap<String, Mutex>()
+    private val pendingNotifications = ConcurrentHashMap<String, CompletableDeferred<Unit>>()
 
     private var scanCallback: ScanCallback? = null
     private var advertiseCallback: AdvertiseCallback? = null
@@ -169,7 +170,7 @@ class BLEMeshManager @Inject constructor(
     val localIdentity: String
         get() = "dev_${getOrCreateShortDeviceId()}"
 
-    fun ensureReady() {
+    fun ensureReady(forceRestart: Boolean = false) {
         scope.launch {
             Log.d(TAG, "[IDENTITY] localStableId=$localIdentity")
             try {
@@ -185,13 +186,30 @@ class BLEMeshManager @Inject constructor(
                 Log.e(TAG, "Failed to run legacy database cleanup", e)
             }
             refreshDisplayName()
-            setupGattServer(force = false)
+            setupGattServer(force = forceRestart)
             withTimeoutOrNull(5_000) { serviceAdded.await() }
             stopAdvertising()
             delay(150)
             startAdvertising()
             if (!_isScanning.value) startScanning()
         }
+    }
+
+    fun stopAll() {
+        Log.i(TAG, "Stopping all BLE mesh operations")
+        stopScanning()
+        stopAdvertising()
+        disconnectAllClients()
+        try {
+            gattServer?.close()
+        } catch (_: Exception) {}
+        gattServer = null
+        serverCharacteristic = null
+        subscribedCentrals.clear()
+        serverConnectedCentrals.clear()
+        serverConnectedCentralsMtu.clear()
+        if (!serviceAdded.isCompleted) serviceAdded.completeExceptionally(java.util.concurrent.CancellationException("GATT server reset"))
+        serviceAdded = CompletableDeferred()
     }
 
     private suspend fun refreshDisplayName() {
@@ -307,7 +325,7 @@ class BLEMeshManager @Inject constructor(
             scope.launch { persistPeerNickname(identity, name) }
             clientLinks[address.uppercase()]?.nickname = name
         }
-        maybeConnect(result.device, name)
+        maybeConnect(result.device, name, identity)
     }
 
     /**
@@ -470,8 +488,8 @@ class BLEMeshManager @Inject constructor(
         advertiseCallback = callback
         try {
             advertiser.startAdvertising(settings, primary, scanResponse, callback)
-        } catch (e: SecurityException) {
-            Log.e(TAG, "Advertise denied", e)
+        } catch (e: Exception) {
+            Log.e(TAG, "Advertise denied or failed", e)
             _isAdvertising.value = false
         }
     }
@@ -584,6 +602,7 @@ class BLEMeshManager @Inject constructor(
             subscribedCentrals.clear()
             serverConnectedCentrals.clear()
             serverConnectedCentralsMtu.clear()
+            if (!serviceAdded.isCompleted) serviceAdded.completeExceptionally(java.util.concurrent.CancellationException("GATT server reset"))
             serviceAdded = CompletableDeferred()
         }
 
@@ -612,6 +631,10 @@ class BLEMeshManager @Inject constructor(
                 if (status == BluetoothGatt.GATT_SUCCESS && !serviceAdded.isCompleted) {
                     serviceAdded.complete(Unit)
                 }
+            }
+
+            override fun onNotificationSent(device: BluetoothDevice, status: Int) {
+                pendingNotifications[device.address.uppercase()]?.complete(Unit)
             }
 
             override fun onCharacteristicWriteRequest(
@@ -724,7 +747,7 @@ class BLEMeshManager @Inject constructor(
         }
     }
 
-    private fun maybeConnect(device: BluetoothDevice, nickname: String) {
+    private fun maybeConnect(device: BluetoothDevice, nickname: String, peerIdentity: String? = null) {
         val key = device.address.uppercase()
         if (serverConnectedCentrals.containsKey(key)) {
             Log.d(TAG, "Skip client connect — $key already connected to our server")
@@ -732,6 +755,10 @@ class BLEMeshManager @Inject constructor(
         }
         if (clientLinks.containsKey(key)) {
             clientLinks[key]?.nickname = nickname.takeUnless { it.startsWith("Nearby ") }
+            return
+        }
+        if (!ConnectionTieBreaker.shouldInitiateConnection(localIdentity, peerIdentity)) {
+            Log.d(TAG, "Connection tie-breaker: skipping outbound connection to $peerIdentity (waiting for inbound)")
             return
         }
         if (connecting.contains(key)) return
@@ -938,6 +965,11 @@ class BLEMeshManager @Inject constructor(
 
     val activeLinkCount: Int
         get() = clientLinks.size + serverConnectedCentrals.size
+
+    fun getLinkQuality(address: String): Byte {
+        val rssi = _discoveredDevices.value.find { it.id.equals(address, ignoreCase = true) }?.rssi
+        return (rssi ?: -100).toByte()
+    }
 
     fun relayPacket(excludeAddress: String, packet: BitchatPacket) {
         val raw = packet.toBinaryData(padding = false) ?: return
@@ -1235,6 +1267,7 @@ class BLEMeshManager @Inject constructor(
                 withTimeoutOrNull(5_000) { waiter.await() }
             } finally {
                 link.pendingWrite = null
+                waiter.cancel()
             }
             if (status == null) {
                 // Some stacks never callback for write-without-response; treat as ok
@@ -1276,6 +1309,8 @@ class BLEMeshManager @Inject constructor(
         return mutex.withLock {
             var allOk = true
             for (chunk in chunks) {
+                val waiter = CompletableDeferred<Unit>()
+                pendingNotifications[central.address.uppercase()] = waiter
                 val ok = try {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                         server.notifyCharacteristicChanged(central, characteristic, false, chunk) ==
@@ -1291,10 +1326,20 @@ class BLEMeshManager @Inject constructor(
                     Log.e(TAG, "notify denied", e)
                     false
                 }
-                if (!ok) {
+                
+                if (ok) {
+                    try {
+                        withTimeoutOrNull(2_000) { waiter.await() }
+                    } finally {
+                        pendingNotifications.remove(central.address.uppercase())
+                        waiter.cancel()
+                    }
+                } else {
+                    pendingNotifications.remove(central.address.uppercase())
+                    waiter.cancel()
                     allOk = false
                 }
-                delay(30) // Prevent BLE stack queue saturation
+                delay(5) // Prevent BLE stack queue saturation
             }
             allOk
         }

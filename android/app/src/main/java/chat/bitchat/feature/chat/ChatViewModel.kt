@@ -165,12 +165,17 @@ class ChatViewModel @Inject constructor(
                 return@launch
             }
 
-            messageRouter.sendMessage(
-                recipientAddress = address,
-                recipientName = name,
-                content = content,
-                isPrivate = true
-            ) {
+            try {
+                messageRouter.sendMessage(
+                    recipientAddress = address,
+                    recipientName = name,
+                    content = content,
+                    isPrivate = true
+                ) {
+                    _isSending.value = false
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("ChatViewModel", "sendMessage error", e)
                 _isSending.value = false
             }
         }

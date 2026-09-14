@@ -1,12 +1,7 @@
 package chat.bitchat.feature.profile
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,14 +15,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Lock
-import androidx.compose.material.icons.outlined.QrCode
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -43,8 +35,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -53,9 +43,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import chat.bitchat.ui.components.EchoPrimaryButton
 import chat.bitchat.ui.components.EchoSectionLabel
+import chat.bitchat.ui.components.EchoTagInputField
 import chat.bitchat.ui.components.InterestChipRow
 import chat.bitchat.ui.components.PeerAvatar
-import chat.bitchat.ui.components.StatusDot
 import chat.bitchat.ui.theme.EchoAccent
 import chat.bitchat.ui.theme.EchoElevated
 import chat.bitchat.ui.theme.EchoHairline
@@ -67,6 +57,7 @@ import chat.bitchat.ui.theme.EchoTextPrimary
 import chat.bitchat.ui.theme.EchoTextSecondary
 import chat.bitchat.ui.theme.EchoTextTertiary
 import chat.bitchat.ui.theme.EchoVoid
+import chat.bitchat.ui.util.InterestMatcher
 import chat.bitchat.ui.util.parseInterests
 import chat.bitchat.ui.util.rememberHaptics
 
@@ -82,35 +73,26 @@ fun ProfileView(
 
     var name by remember { mutableStateOf("") }
     var bio by remember { mutableStateOf("") }
-    var movies by remember { mutableStateOf("") }
-    var music by remember { mutableStateOf("") }
-    var interests by remember { mutableStateOf("") }
-    var singers by remember { mutableStateOf("") }
-    var career by remember { mutableStateOf("") }
+    var tags by remember { mutableStateOf<List<String>>(emptyList()) }
     var savedFlash by remember { mutableStateOf(false) }
 
     LaunchedEffect(profile) {
         profile?.let {
             name = it.name
             bio = it.bio
-            movies = it.favoriteMovies
-            music = it.favoriteMusic
-            interests = it.interests
-            singers = it.singers
-            career = it.career
+            val mergedLegacy = listOfNotNull(
+                it.interests.takeIf { s -> s.isNotBlank() },
+                it.favoriteMusic.takeIf { s -> s.isNotBlank() },
+                it.favoriteMovies.takeIf { s -> s.isNotBlank() },
+                it.singers.takeIf { s -> s.isNotBlank() },
+                it.career.takeIf { s -> s.isNotBlank() }
+            ).joinToString(", ")
+            tags = InterestMatcher.parseTags(mergedLegacy, max = 20)
         }
     }
 
-    val previewInterests = remember(interests, music, movies, singers, career) {
-        parseInterests(
-            listOfNotNull(
-                interests.takeIf { it.isNotBlank() },
-                music.takeIf { it.isNotBlank() },
-                movies.takeIf { it.isNotBlank() },
-                singers.takeIf { it.isNotBlank() },
-                career.takeIf { it.isNotBlank() }
-            ).joinToString(", ")
-        )
+    val previewInterests = remember(tags) {
+        parseInterests(tags.joinToString(", "))
     }
 
     Column(
@@ -119,21 +101,19 @@ fun ProfileView(
             .background(EchoVoid)
             .statusBarsPadding()
     ) {
-        // Header Row
+        // Header
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = EchoSpace.md, vertical = EchoSpace.xs),
+                .padding(horizontal = EchoSpace.lg, vertical = EchoSpace.sm),
+            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "Identity",
+                text = "Profile",
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
-                color = EchoTextPrimary,
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(start = EchoSpace.xs)
+                color = EchoTextPrimary
             )
             IconButton(onClick = onOpenSettings) {
                 Icon(
@@ -153,29 +133,13 @@ fun ProfileView(
         ) {
             Spacer(modifier = Modifier.height(EchoSpace.sm))
 
-            // 🪪 Futuristic Tactical Identity Card
+            // Profile Card Preview
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(EchoRadius.lg))
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(
-                                EchoElevated.copy(alpha = 0.95f),
-                                EchoSurface.copy(alpha = 0.85f)
-                            )
-                        )
-                    )
-                    .border(
-                        width = 1.dp,
-                        brush = Brush.verticalGradient(
-                            colors = listOf(
-                                EchoAccent.copy(alpha = 0.45f),
-                                EchoHairline.copy(alpha = 0.20f)
-                            )
-                        ),
-                        shape = RoundedCornerShape(EchoRadius.lg)
-                    )
+                    .background(EchoSurface)
+                    .border(1.dp, EchoHairline, RoundedCornerShape(EchoRadius.lg))
                     .padding(EchoSpace.lg),
                 contentAlignment = Alignment.Center
             ) {
@@ -183,28 +147,24 @@ fun ProfileView(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    // Avatar with glowing ring
                     PeerAvatar(
                         name = name.ifBlank { "You" },
-                        size = 92.dp,
-                        fontSize = 32.sp,
+                        size = 80.dp,
+                        fontSize = 28.sp,
                         highlighted = true,
                         ringColor = EchoAccent
                     )
-                    Spacer(modifier = Modifier.height(EchoSpace.md))
-
-                    // User name
+                    Spacer(modifier = Modifier.height(EchoSpace.sm))
                     Text(
-                        text = name.ifBlank { "Your Codename" },
-                        style = MaterialTheme.typography.headlineSmall,
+                        text = name.ifBlank { "Your Name" },
+                        style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
                         color = EchoTextPrimary
                     )
-
                     if (bio.isNotBlank()) {
                         Spacer(modifier = Modifier.height(EchoSpace.xs))
                         Text(
-                            text = "“$bio”",
+                            text = bio,
                             style = MaterialTheme.typography.bodyMedium,
                             color = EchoTextSecondary,
                             textAlign = TextAlign.Center
@@ -213,36 +173,29 @@ fun ProfileView(
 
                     Spacer(modifier = Modifier.height(EchoSpace.md))
 
-                    // Node ID & Security Chips
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Monospace Node ID Chip
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
+                        // Node ID
+                        Text(
+                            text = localId.take(12),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontFamily = FontFamily.Monospace,
+                            color = EchoTextSecondary,
                             modifier = Modifier
                                 .clip(RoundedCornerShape(EchoRadius.full))
-                                .background(EchoVoid.copy(alpha = 0.6f))
-                                .border(1.dp, EchoAccent.copy(alpha = 0.3f), RoundedCornerShape(EchoRadius.full))
+                                .background(EchoElevated)
+                                .border(1.dp, EchoHairline, RoundedCornerShape(EchoRadius.full))
                                 .padding(horizontal = 10.dp, vertical = 4.dp)
-                        ) {
-                            StatusDot(active = true, color = EchoSuccess)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = localId,
-                                style = MaterialTheme.typography.labelSmall,
-                                fontFamily = FontFamily.Monospace,
-                                color = EchoAccent
-                            )
-                        }
+                        )
 
-                        // E2EE Badge
+                        // E2EE Indicator
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .clip(RoundedCornerShape(EchoRadius.full))
-                                .background(EchoVoid.copy(alpha = 0.6f))
+                                .background(EchoElevated)
                                 .border(1.dp, EchoHairline, RoundedCornerShape(EchoRadius.full))
                                 .padding(horizontal = 10.dp, vertical = 4.dp)
                         ) {
@@ -254,7 +207,7 @@ fun ProfileView(
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = "ECDH SECP256R1",
+                                text = "E2EE Protected",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = EchoTextSecondary
                             )
@@ -270,85 +223,50 @@ fun ProfileView(
 
             Spacer(modifier = Modifier.height(EchoSpace.xl))
 
-            // Section 1: Profile Details
-            EchoSectionLabel(text = "Personal Dossier")
+            // Profile Fields
+            EchoSectionLabel(text = "Personal Info")
             Spacer(modifier = Modifier.height(EchoSpace.sm))
             EchoField(
-                label = "Codename / Display Name",
+                label = "Display Name",
                 value = name,
                 onValueChange = { name = it },
                 singleLine = true,
-                hint = "How nearby mesh peers see you"
+                hint = "How nearby people will see you"
             )
             Spacer(modifier = Modifier.height(EchoSpace.sm))
             EchoField(
-                label = "Bio / Status",
+                label = "Bio",
                 value = bio,
                 onValueChange = { bio = it },
                 singleLine = false,
-                hint = "A short quote or off-grid status"
+                hint = "A short status or intro"
             )
 
             Spacer(modifier = Modifier.height(EchoSpace.xl))
 
-            // Section 2: Shared Mesh Telemetry & Tags
-            EchoSectionLabel(text = "Radio Discovery Tags")
+            // Interests & Skills Tag Input
+            EchoSectionLabel(text = "Interests & Skills")
             Spacer(modifier = Modifier.height(EchoSpace.xs))
             Text(
-                text = "Tags are automatically compared with nearby peers to highlight shared interests.",
+                text = "Add passions, topics, or skills you're interested in. Used to highlight mutual connections when discovering people nearby.",
                 style = MaterialTheme.typography.bodySmall,
                 color = EchoTextTertiary,
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(modifier = Modifier.height(EchoSpace.sm))
 
-            EchoField(
-                label = "🎬 Movies & Series",
-                value = movies,
-                onValueChange = { movies = it },
-                singleLine = false,
-                hint = "e.g. Breaking Bad, Interstellar, Mr. Robot"
-            )
-            Spacer(modifier = Modifier.height(EchoSpace.sm))
-            EchoField(
-                label = "🎵 Music Genres",
-                value = music,
-                onValueChange = { music = it },
-                singleLine = false,
-                hint = "e.g. Synthwave, Rock, Lo-fi, Electronic"
-            )
-            Spacer(modifier = Modifier.height(EchoSpace.sm))
-            EchoField(
-                label = "🎤 Favorite Artists & Bands",
-                value = singers,
-                onValueChange = { singers = it },
-                singleLine = false,
-                hint = "e.g. Daft Punk, The Weeknd, Hans Zimmer"
-            )
-            Spacer(modifier = Modifier.height(EchoSpace.sm))
-            EchoField(
-                label = "💼 Career / Focus",
-                value = career,
-                onValueChange = { career = it },
-                singleLine = false,
-                hint = "e.g. Software Engineer, Robotics, Design"
-            )
-            Spacer(modifier = Modifier.height(EchoSpace.sm))
-            EchoField(
-                label = "⚡ Passions & Hobbies",
-                value = interests,
-                onValueChange = { interests = it },
-                singleLine = false,
-                hint = "e.g. Mesh Radios, Astronomy, Cycling"
+            EchoTagInputField(
+                tags = tags,
+                onTagsChanged = { tags = it },
+                maxTags = 20
             )
 
             Spacer(modifier = Modifier.height(EchoSpace.xl))
 
-            // Save Action Button
             EchoPrimaryButton(
-                text = if (savedFlash) "✓ Profile Broadcasted" else "Save & Broadcast to Swarm",
+                text = if (savedFlash) "✓ Profile Saved" else "Save Profile",
                 onClick = {
-                    viewModel.updateProfile(name, bio, movies, music, interests, singers, career)
+                    viewModel.updateProfile(name, bio, tags)
                     haptics.confirm()
                     savedFlash = true
                 }
@@ -379,21 +297,21 @@ private fun EchoField(
         Text(
             text = label,
             style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = if (isFilled) EchoAccent else EchoTextSecondary
+            fontWeight = FontWeight.Medium,
+            color = EchoTextSecondary
         )
         Spacer(modifier = Modifier.height(6.dp))
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
             singleLine = singleLine,
-            maxLines = if (singleLine) 1 else 4,
+            maxLines = if (singleLine) 1 else 3,
             textStyle = MaterialTheme.typography.bodyLarge.copy(color = EchoTextPrimary),
             cursorBrush = SolidColor(EchoAccent),
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(EchoRadius.md))
-                .background(EchoElevated.copy(alpha = 0.75f))
+                .background(EchoElevated)
                 .border(
                     width = 1.dp,
                     color = if (isFilled) EchoAccent.copy(alpha = 0.35f) else EchoHairline,
@@ -405,7 +323,7 @@ private fun EchoField(
                     Text(
                         text = hint,
                         style = MaterialTheme.typography.bodyLarge,
-                        color = EchoTextTertiary.copy(alpha = 0.7f)
+                        color = EchoTextTertiary.copy(alpha = 0.6f)
                     )
                 }
                 inner()

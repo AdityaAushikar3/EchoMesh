@@ -7,6 +7,8 @@ import chat.bitchat.core.bluetooth.NearbyDevice
 import chat.bitchat.data.database.EchoMeshDatabase
 import chat.bitchat.data.database.Peer
 import chat.bitchat.domain.repository.ProfileRepository
+import chat.bitchat.domain.router.MeshGraph
+import chat.bitchat.domain.router.MeshTopologyRepository
 import chat.bitchat.ui.util.Interest
 import chat.bitchat.ui.util.parseInterests
 import chat.bitchat.ui.util.sharedInterests
@@ -18,7 +20,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import javax.inject.Inject
 
-enum class DiscoverTab { All, Matches }
+enum class DiscoverTab { All, Matches, Topology }
 
 data class DiscoverItem(
     val device: NearbyDevice,
@@ -30,12 +32,14 @@ data class DiscoverItem(
 class DiscoverViewModel @Inject constructor(
     bluetoothRepository: BluetoothRepository,
     profileRepository: ProfileRepository,
-    database: EchoMeshDatabase
+    database: EchoMeshDatabase,
+    meshTopologyRepository: MeshTopologyRepository
 ) : ViewModel() {
 
     private val peerDao = database.peerDao()
     private val blockedPeerDao = database.blockedPeerDao()
     val selectedTab = MutableStateFlow(DiscoverTab.All)
+    val meshGraph: StateFlow<MeshGraph> = meshTopologyRepository.graph
 
     private val parsedInterestsCache = java.util.concurrent.ConcurrentHashMap<String, List<Interest>>()
 
@@ -106,6 +110,7 @@ class DiscoverViewModel @Inject constructor(
             DiscoverTab.All -> items.sortedByDescending { it.device.rssi }
             DiscoverTab.Matches -> items.filter { it.sharedInterests.isNotEmpty() }
                 .sortedByDescending { it.device.rssi }
+            DiscoverTab.Topology -> items
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 

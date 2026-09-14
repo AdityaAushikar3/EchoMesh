@@ -1,6 +1,7 @@
 package chat.bitchat.feature.discover
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,28 +23,31 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import chat.bitchat.core.bluetooth.NearbyDevice
+import chat.bitchat.domain.router.MeshGraph
 import chat.bitchat.ui.components.DistanceIndicator
-import chat.bitchat.ui.components.DiscoverCompassIllustration
 import chat.bitchat.ui.components.EchoEmptyState
-import chat.bitchat.ui.components.EchoSectionLabel
 import chat.bitchat.ui.components.InterestChipRow
+import chat.bitchat.ui.components.MeshVisualizer
 import chat.bitchat.ui.components.PeerAvatar
 import chat.bitchat.ui.theme.EchoAccent
 import chat.bitchat.ui.theme.EchoElevated
+import chat.bitchat.ui.theme.EchoHairline
 import chat.bitchat.ui.theme.EchoRadius
 import chat.bitchat.ui.theme.EchoSpace
+import chat.bitchat.ui.theme.EchoSurface
+import chat.bitchat.ui.theme.EchoTextOnAccent
 import chat.bitchat.ui.theme.EchoTextPrimary
 import chat.bitchat.ui.theme.EchoTextSecondary
 import chat.bitchat.ui.theme.EchoTextTertiary
 import chat.bitchat.ui.theme.EchoVoid
 import chat.bitchat.ui.util.displayName
-import chat.bitchat.ui.util.parseInterests
 import chat.bitchat.ui.util.rssiToBand
 import chat.bitchat.ui.util.rssiToMeters
 
@@ -55,6 +59,7 @@ fun DiscoverView(
 ) {
     val items by viewModel.discoverItems.collectAsState()
     val selectedTab by viewModel.selectedTab.collectAsState()
+    val meshGraph by viewModel.meshGraph.collectAsState()
 
     Column(
         modifier = modifier
@@ -67,11 +72,16 @@ fun DiscoverView(
         Text(
             text = "Discover",
             style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
             color = EchoTextPrimary
         )
-        Spacer(modifier = Modifier.height(EchoSpace.xs))
+        Spacer(modifier = Modifier.height(2.dp))
         Text(
-            text = "Find people around you sharing interests offline.",
+            text = when (selectedTab) {
+                DiscoverTab.Topology -> "Live mesh routing constellation & node graph."
+                DiscoverTab.Matches -> "People sharing common passions with you."
+                DiscoverTab.All -> "Find nearby people sharing interests offline."
+            },
             style = MaterialTheme.typography.bodyMedium,
             color = EchoTextSecondary
         )
@@ -84,21 +94,38 @@ fun DiscoverView(
 
         Spacer(modifier = Modifier.height(EchoSpace.md))
 
-        if (items.isEmpty()) {
-            EchoEmptyState(
-                title = if (selectedTab == DiscoverTab.Matches) "No matches found" else "Quiet right now",
-                subtitle = if (selectedTab == DiscoverTab.Matches) "Keep scanning to find people sharing interests." else "Open Space and keep listening to find people.",
+        if (selectedTab == DiscoverTab.Topology) {
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f)
+                    .weight(1f),
+                contentAlignment = Alignment.Center
             ) {
-                DiscoverCompassIllustration()
+                MeshVisualizer(
+                    graph = meshGraph,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+        } else if (items.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                contentAlignment = Alignment.Center
+            ) {
+                EchoEmptyState(
+                    title = if (selectedTab == DiscoverTab.Matches) "No common matches yet" else "No one nearby yet",
+                    subtitle = if (selectedTab == DiscoverTab.Matches)
+                        "People broadcasting mutual interests will appear here automatically."
+                    else
+                        "Make sure Bluetooth is active and listening in Space."
+                )
             }
         } else {
             LazyColumn(
                 modifier = Modifier.weight(1f),
                 contentPadding = PaddingValues(bottom = EchoSpace.xl),
-                verticalArrangement = Arrangement.spacedBy(EchoSpace.xs)
+                verticalArrangement = Arrangement.spacedBy(EchoSpace.sm)
             ) {
                 items(items, key = { it.device.id }) { item ->
                     DiscoverPersonRow(
@@ -122,24 +149,31 @@ private fun DiscoverTabs(
             .fillMaxWidth()
             .clip(RoundedCornerShape(EchoRadius.md))
             .background(EchoElevated)
-            .padding(4.dp),
+            .border(1.dp, EchoHairline, RoundedCornerShape(EchoRadius.md))
+            .padding(3.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         for (tab in DiscoverTab.entries) {
             val active = tab == selected
+            val label = when (tab) {
+                DiscoverTab.All -> "All Nearby"
+                DiscoverTab.Matches -> "Matches"
+                DiscoverTab.Topology -> "Topology"
+            }
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .clip(RoundedCornerShape(8.dp))
-                    .background(if (active) EchoAccent else EchoVoid.copy(alpha = 0.2f))
+                    .background(if (active) EchoAccent else EchoElevated)
                     .clickable { onSelect(tab) }
-                    .padding(vertical = EchoSpace.sm),
+                    .padding(vertical = 8.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = if (tab == DiscoverTab.All) "All Nearby" else "Matches",
-                    color = if (active) EchoVoid else EchoTextPrimary,
-                    style = MaterialTheme.typography.labelLarge
+                    text = label,
+                    color = if (active) EchoTextOnAccent else EchoTextSecondary,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = if (active) FontWeight.Bold else FontWeight.Medium
                 )
             }
         }
@@ -152,58 +186,50 @@ private fun DiscoverPersonRow(
     onClick: () -> Unit
 ) {
     val name = item.device.displayName()
+    val meters = rssiToMeters(item.device.rssi)
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(EchoRadius.md))
-            .background(EchoElevated.copy(alpha = 0.55f))
+            .background(EchoSurface)
+            .border(1.dp, EchoHairline, RoundedCornerShape(EchoRadius.md))
             .clickable(onClick = onClick)
-            .padding(horizontal = EchoSpace.md, vertical = EchoSpace.sm),
+            .padding(horizontal = EchoSpace.md, vertical = EchoSpace.sm + 2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         PeerAvatar(
             name = name,
-            size = 44.dp,
+            size = 46.dp,
             proximityBand = rssiToBand(item.device.rssi)
         )
         Spacer(modifier = Modifier.width(EchoSpace.sm))
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = name,
-                style = MaterialTheme.typography.titleSmall,
-                color = EchoTextPrimary
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = name,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = EchoTextPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                DistanceIndicator(rssi = item.device.rssi)
+            }
             Spacer(modifier = Modifier.height(2.dp))
             Text(
-                text = "About ${rssiToMeters(item.device.rssi)} meters away",
+                text = "$meters meters away",
                 style = MaterialTheme.typography.bodySmall,
                 color = EchoTextTertiary
             )
             if (item.sharedInterests.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(6.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Text(
-                        text = "🤝 Shared:",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = EchoAccent
-                    )
-                    for (shared in item.sharedInterests) {
-                        Text(
-                            text = shared.display,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = EchoTextPrimary,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(EchoElevated)
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
-                }
+                InterestChipRow(interests = item.sharedInterests, max = 3)
             }
         }
-        DistanceIndicator(rssi = item.device.rssi)
     }
 }

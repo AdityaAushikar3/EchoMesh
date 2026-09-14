@@ -59,10 +59,14 @@ class PeerProfileViewModel @Inject constructor(
         val device: NearbyDevice? = devices.find {
             it.id.equals(peerId, ignoreCase = true) ||
                     it.identity.equals(peerId, ignoreCase = true) ||
-                    it.name == peerId
+                    it.name.equals(peerId, ignoreCase = true)
         }
+        val targetIdentity = device?.identity ?: peerId
         val peer = peers.find {
-            it.peerID.equals(peerId, ignoreCase = true) || it.nickname == peerId
+            it.peerID.equals(targetIdentity, ignoreCase = true) ||
+                    it.peerID.equals(peerId, ignoreCase = true) ||
+                    it.nickname.equals(peerId, ignoreCase = true) ||
+                    (device != null && it.nickname.equals(device.name, ignoreCase = true))
         }
         val stableId = device?.identity?.takeIf { it.startsWith("dev_") }
             ?: peer?.peerID?.takeIf { it.startsWith("dev_") }

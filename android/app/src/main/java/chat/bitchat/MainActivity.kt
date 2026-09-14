@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import chat.bitchat.core.bluetooth.BluetoothRepository
+import chat.bitchat.core.proximity.ProximityAlertManager
 import chat.bitchat.domain.router.MessageRouter
 import chat.bitchat.ui.EchoMeshNavHost
 import chat.bitchat.ui.theme.EchoMeshTheme
@@ -26,6 +27,9 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var bluetoothRepository: BluetoothRepository
+
+    @Inject
+    lateinit var proximityAlertManager: ProximityAlertManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -58,6 +62,9 @@ class MainActivity : ComponentActivity() {
             bluetoothRepository.ensureReady()
         }, 800)
 
+        // Start idempotent mutual interest proximity observer
+        proximityAlertManager.startObserving()
+
         val prefs = getSharedPreferences("echomesh_prefs", MODE_PRIVATE)
         val savedTheme = prefs.getString("theme_mode", "system") ?: "system"
         ThemeConfig.themeMode.value = savedTheme
@@ -80,6 +87,8 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    @Deprecated("Deprecated in Java")
+    @Suppress("DEPRECATION")
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,

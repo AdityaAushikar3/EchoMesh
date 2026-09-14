@@ -15,6 +15,7 @@ object BinaryProtocol {
         const val IS_COMPRESSED: Byte = 0x04
         const val HAS_ROUTE: Byte = 0x08
         const val IS_RSR: Byte = 0x10
+        const val HAS_ROUTE_METRICS: Byte = 0x20
     }
 
     private fun lengthFieldSize(version: Byte): Int {
@@ -64,14 +65,16 @@ object BinaryProtocol {
         if (sanitizedRoute.size > 255) return null
 
         val hasRoute = sanitizedRoute.isNotEmpty()
+        val hasRouteMetrics = hasRoute && packet.routeMetrics != null && packet.routeMetrics.isNotEmpty()
         val routeLength = if (hasRoute) 1 + sanitizedRoute.size * SENDER_ID_SIZE else 0
+        val routeMetricsLength = if (hasRouteMetrics) sanitizedRoute.size else 0
         val originalSizeFieldBytes = if (isCompressed) lengthFieldBytes else 0
         val payloadDataSize = payload.size + originalSizeFieldBytes
 
         if (version.toInt() == 1 && payloadDataSize > 65535) return null
 
         val headerSize = headerSize(version) ?: return null
-        val estimatedHeader = headerSize + SENDER_ID_SIZE + (if (packet.recipientID == null) 0 else RECIPIENT_ID_SIZE) + routeLength
+        val estimatedHeader = headerSize + SENDER_ID_SIZE + (if (packet.recipientID == null) 0 else RECIPIENT_ID_SIZE) + routeLength + routeMetricsLength
         val estimatedPayload = payloadDataSize
         val estimatedSignature = if (packet.signature == null) 0 else SIGNATURE_SIZE
         
@@ -88,6 +91,7 @@ object BinaryProtocol {
         if (isCompressed) flags = (flags.toInt() or Flags.IS_COMPRESSED.toInt()).toByte()
         if (hasRoute && version.toInt() >= 2) flags = (flags.toInt() or Flags.HAS_ROUTE.toInt()).toByte()
         if (packet.isRSR) flags = (flags.toInt() or Flags.IS_RSR.toInt()).toByte()
+        if (hasRouteMetrics) flags = (flags.toInt() or Flags.HAS_ROUTE_METRICS.toInt()).toByte()
         buffer.put(flags)
 
         if (version.toInt() == 2) {
@@ -113,6 +117,12 @@ object BinaryProtocol {
             buffer.put(sanitizedRoute.size.toByte())
             for (hop in sanitizedRoute) {
                 buffer.put(hop)
+            }
+            if (hasRouteMetrics) {
+                for (i in sanitizedRoute.indices) {
+                    val rssi = packet.routeMetrics.getOrNull(i) ?: 0
+                    buffer.put(rssi)
+                }
             }
         }
 
@@ -172,6 +182,7 @@ object BinaryProtocol {
         val isCompressed = (flags and Flags.IS_COMPRESSED.toInt()) != 0
         val hasRoute = version.toInt() >= 2 && (flags and Flags.HAS_ROUTE.toInt()) != 0
         val isRSR = (flags and Flags.IS_RSR.toInt()) != 0
+        val hasRouteMetrics = (flags and Flags.HAS_ROUTE_METRICS.toInt()) != 0
 
         val payloadLength = if (version.toInt() == 2) {
             buffer.getInt()
@@ -192,6 +203,7 @@ object BinaryProtocol {
         }
 
         var route: MutableList<ByteArray>? = null
+        var routeMetrics: MutableList<Byte>? = null
         if (hasRoute) {
             if (!buffer.hasRemaining()) return null
             val routeCount = buffer.get().toInt() and 0xFF
@@ -202,6 +214,14 @@ object BinaryProtocol {
                     val hop = ByteArray(SENDER_ID_SIZE)
                     buffer.get(hop)
                     route.add(hop)
+                }
+                
+                if (hasRouteMetrics) {
+                    if (buffer.remaining() < routeCount) return null
+                    routeMetrics = mutableListOf()
+                    for (i in 0 until routeCount) {
+                        routeMetrics.add(buffer.get())
+                    }
                 }
             }
         }
@@ -251,6 +271,7 @@ object BinaryProtocol {
             signature = signature,
             ttl = ttl,
             route = route,
+            routeMetrics = routeMetrics,
             isRSR = isRSR
         )
     }

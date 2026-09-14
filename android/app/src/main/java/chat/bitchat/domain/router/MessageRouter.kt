@@ -147,7 +147,7 @@ class MessageRouter @Inject constructor(
                         
                         // Relay profile packet to mesh
                         if (packet.ttl > 1) {
-                            val relayedPacket = packet.copy(ttl = (packet.ttl - 1).toByte())
+                            val relayedPacket = prepareRelayPacket(packet, senderAddress)
                             scope.launch {
                                 delay((50..150).random().toLong())
                                 bleMeshManager.relayPacket(senderAddress, relayedPacket)
@@ -177,7 +177,7 @@ class MessageRouter @Inject constructor(
                             )
                             // Relay instead of storing
                             if (packet.ttl > 1) {
-                                val relayedPacket = packet.copy(ttl = (packet.ttl - 1).toByte())
+                                val relayedPacket = prepareRelayPacket(packet, senderAddress)
                                 scope.launch {
                                     delay((50..150).random().toLong())
                                     bleMeshManager.relayPacket(senderAddress, relayedPacket)
@@ -261,7 +261,7 @@ class MessageRouter @Inject constructor(
                     // Relay public messages to mesh
                     if (!message.isPrivate) {
                         if (packet.ttl > 1) {
-                            val relayedPacket = packet.copy(ttl = (packet.ttl - 1).toByte())
+                            val relayedPacket = prepareRelayPacket(packet, senderAddress)
                             scope.launch {
                                 delay((50..150).random().toLong())
                                 bleMeshManager.relayPacket(senderAddress, relayedPacket)
@@ -276,8 +276,8 @@ class MessageRouter @Inject constructor(
                         return@collect
                     }
 
-                    // Decrement TTL
-                    val relayedPacket = packet.copy(ttl = (packet.ttl - 1).toByte())
+                    // Decrement TTL and append route telemetry
+                    val relayedPacket = prepareRelayPacket(packet, senderAddress)
 
                     // Calculate delay based on connection degree
                     val degree = bleMeshManager.activeLinkCount
@@ -482,5 +482,17 @@ class MessageRouter @Inject constructor(
     private fun getMockPeerID(name: String): ByteArray {
         val digest = MessageDigest.getInstance("SHA-256")
         return digest.digest(name.toByteArray()).copyOf(8)
+    }
+
+    private fun prepareRelayPacket(packet: BitchatPacket, senderAddress: String): BitchatPacket {
+        val myNodeId = getMockPeerID(bleMeshManager.localIdentity)
+        val rssi = bleMeshManager.getLinkQuality(senderAddress)
+        val newRoute = (packet.route ?: emptyList()) + myNodeId
+        val newMetrics = (packet.routeMetrics ?: emptyList()) + rssi
+        return packet.copy(
+            ttl = (packet.ttl - 1).toByte(),
+            route = newRoute,
+            routeMetrics = newMetrics
+        )
     }
 }

@@ -14,6 +14,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -22,8 +23,8 @@ import chat.bitchat.ui.theme.*
 import kotlin.math.abs
 
 private val avatarPalette = listOf(
-    AvatarCoral, AvatarSage, AvatarSky, AvatarSand,
-    AvatarLilac, AvatarSlate, AvatarRose, AvatarTeal
+    AvatarSlate, AvatarTerracotta, AvatarMoss, AvatarOchre,
+    AvatarDenim, AvatarPlum, AvatarRust, AvatarSage
 )
 
 fun getAvatarColor(name: String): Color {
@@ -53,10 +54,10 @@ fun PeerAvatar(
 ) {
     val base = getAvatarColor(name)
     val effectiveRingColor = when (proximityBand) {
-        chat.bitchat.ui.util.ProximityBand.Near -> EchoAccent.copy(alpha = 0.95f)
-        chat.bitchat.ui.util.ProximityBand.Mid -> EchoAccent.copy(alpha = 0.6f)
-        chat.bitchat.ui.util.ProximityBand.Far -> AvatarSlate.copy(alpha = 0.45f)
-        null -> ringColor.copy(alpha = 0.7f)
+        chat.bitchat.ui.util.ProximityBand.Near -> EchoAccent
+        chat.bitchat.ui.util.ProximityBand.Mid -> EchoAccent.copy(alpha = 0.5f)
+        chat.bitchat.ui.util.ProximityBand.Far -> EchoHairline
+        null -> ringColor
     }
     val showBorder = highlighted || proximityBand != null
 
@@ -70,13 +71,14 @@ fun PeerAvatar(
                 } else Modifier
             )
             .clip(CircleShape)
-            .background(base.copy(alpha = 0.92f)),
+            .background(base.copy(alpha = 0.90f)),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = getInitials(name),
-            color = EchoTextPrimary,
+            color = Color.White,
             fontSize = fontSize,
+            fontWeight = FontWeight.SemiBold,
             style = MaterialTheme.typography.labelLarge
         )
     }

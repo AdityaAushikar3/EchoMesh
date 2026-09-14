@@ -5,6 +5,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,9 +18,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -28,14 +30,22 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import chat.bitchat.core.bluetooth.NearbyDevice
 import chat.bitchat.ui.components.EchoEmptyState
 import chat.bitchat.ui.components.NearbySpace
 import chat.bitchat.ui.components.ScanningState
 import chat.bitchat.ui.components.StatusDot
+import chat.bitchat.ui.theme.EchoAccent
+import chat.bitchat.ui.theme.EchoElevated
+import chat.bitchat.ui.theme.EchoHairline
 import chat.bitchat.ui.theme.EchoMotion
+import chat.bitchat.ui.theme.EchoRadius
 import chat.bitchat.ui.theme.EchoSpace
+import chat.bitchat.ui.theme.EchoSuccess
 import chat.bitchat.ui.theme.EchoTextPrimary
 import chat.bitchat.ui.theme.EchoTextSecondary
 import chat.bitchat.ui.theme.EchoTextTertiary
@@ -73,14 +83,16 @@ fun HomeView(
         SpaceHeader(
             peopleCount = devices.size,
             isScanning = isScanning,
-            onToggleScan = { viewModel.toggleScanning() }
+            onToggleScan = {
+                haptics.confirm()
+                viewModel.toggleScanning()
+            }
         )
 
         Box(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .padding(horizontal = EchoSpace.sm)
         ) {
             AnimatedContent(
                 targetState = when {
@@ -110,14 +122,20 @@ fun HomeView(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
                     ) {
-                        ScanningState(isScanning = true)
+                        ScanningState(
+                            label = "Listening for nearby mesh nodes...",
+                            isScanning = true
+                        )
                     }
-                    SpaceMode.Empty -> EchoEmptyState(
-                        title = "No one nearby yet",
-                        subtitle = "Move around or tap Listen to discover people.",
+                    SpaceMode.Empty -> Box(
                         modifier = Modifier.fillMaxSize(),
-                        isScanning = false
-                    )
+                        contentAlignment = Alignment.Center
+                    ) {
+                        EchoEmptyState(
+                            title = "Discovery Paused",
+                            subtitle = "Tap Listen in the top right to discover people nearby over Bluetooth mesh."
+                        )
+                    }
                 }
             }
         }
@@ -132,45 +150,54 @@ private fun SpaceHeader(
     isScanning: Boolean,
     onToggleScan: () -> Unit
 ) {
-    Column(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = EchoSpace.lg, vertical = EchoSpace.md)
+            .padding(horizontal = EchoSpace.lg, vertical = EchoSpace.md),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = "Space",
                 style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
                 color = EchoTextPrimary
             )
-            chat.bitchat.ui.components.MeshStatusPill(
-                peerCount = peopleCount,
-                isActive = isScanning
-            )
-        }
-        Spacer(modifier = Modifier.height(EchoSpace.xs))
-        Row(verticalAlignment = Alignment.CenterVertically) {
+            Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = when {
-                    peopleCount > 0 -> "$peopleCount ${if (peopleCount == 1) "person" else "people"} nearby"
-                    isScanning -> "Listening for nearby mesh nodes…"
-                    else -> "Scanner paused"
+                    peopleCount > 0 -> "$peopleCount ${if (peopleCount == 1) "person" else "people"} detected nearby"
+                    isScanning -> "Scanning nearby mesh nodes..."
+                    else -> "Mesh discovery paused"
                 },
                 style = MaterialTheme.typography.bodyMedium,
-                color = EchoTextSecondary
+                color = EchoTextSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
-            Spacer(modifier = Modifier.weight(1f))
-            TextButton(onClick = onToggleScan) {
-                Text(
-                    text = if (isScanning) "Pause" else "Listen",
-                    color = EchoTextTertiary,
-                    style = MaterialTheme.typography.labelLarge
-                )
-            }
+        }
+        Spacer(modifier = Modifier.width(EchoSpace.sm))
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(EchoRadius.full))
+                .background(EchoElevated)
+                .border(1.dp, EchoHairline, RoundedCornerShape(EchoRadius.full))
+                .clickable(onClick = onToggleScan)
+                .padding(horizontal = 14.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            StatusDot(
+                active = isScanning,
+                color = if (peopleCount > 0) EchoSuccess else EchoAccent
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = if (isScanning) "Pause" else "Listen",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = if (isScanning) EchoTextSecondary else EchoAccent
+            )
         }
     }
 }

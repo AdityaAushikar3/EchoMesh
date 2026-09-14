@@ -88,16 +88,26 @@ class ChatsViewModel @Inject constructor(
 
     fun deleteConversation(peerKey: String, displayName: String) {
         viewModelScope.launch {
-            val peer = database.peerDao().getAllPeersDirect().find {
+            val allPeers = database.peerDao().getAllPeersDirect()
+            val peer = allPeers.find {
                 it.peerID.equals(peerKey, ignoreCase = true) ||
-                        it.nickname.equals(displayName, ignoreCase = true)
+                        (displayName.isNotBlank() && it.nickname.equals(displayName, ignoreCase = true))
             }
+            val canonicalId = peer?.peerID ?: peerKey
+            val knownNicknames = setOfNotNull(
+                peer?.nickname?.takeIf { it.isNotBlank() },
+                displayName.takeIf { it.isNotBlank() },
+                peerKey.takeIf { it.isNotBlank() }
+            )
+
             if (peer != null) {
                 database.peerDao().deletePeer(peer)
             }
-            database.messageDao().deleteMessagesForPeer(peerKey)
-            if (displayName.isNotBlank() && displayName != peerKey) {
-                database.messageDao().deleteMessagesForPeer(displayName)
+            database.messageDao().deleteMessagesForPeer(canonicalId)
+            knownNicknames.forEach { name ->
+                if (!name.equals(canonicalId, ignoreCase = true)) {
+                    database.messageDao().deleteMessagesForPeer(name)
+                }
             }
         }
     }

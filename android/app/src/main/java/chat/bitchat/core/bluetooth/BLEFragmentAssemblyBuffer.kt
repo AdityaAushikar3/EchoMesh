@@ -7,6 +7,7 @@ class BLEFragmentAssemblyBuffer(
     private val timeProvider: () -> Long = { System.currentTimeMillis() }
 ) {
     private val assemblyMap = mutableMapOf<String, AssemblySession>()
+    private var lastCleanupTime = 0L
 
     data class AssemblySession(
         val fragmentId: String,
@@ -50,10 +51,13 @@ class BLEFragmentAssemblyBuffer(
         }
 
         val idHex = fragmentId.joinToString("") { String.format("%02x", it) }
-        
-        // Clean up stale sessions (> 30 seconds of inactivity)
         val now = timeProvider()
-        assemblyMap.entries.removeIf { now - it.value.lastActiveAt > 30000 }
+
+        // Clean up stale sessions (> 30 seconds of inactivity), throttled to at most once per 10s or when session limit reached
+        if (now - lastCleanupTime >= CLEANUP_INTERVAL_MS || assemblyMap.size >= MAX_SESSIONS) {
+            assemblyMap.entries.removeIf { now - it.value.lastActiveAt > 30000 }
+            lastCleanupTime = now
+        }
 
         if (!assemblyMap.containsKey(idHex) && assemblyMap.size >= MAX_SESSIONS) {
             val oldestKey = assemblyMap.entries.minByOrNull { it.value.lastActiveAt }?.key
@@ -88,6 +92,7 @@ class BLEFragmentAssemblyBuffer(
     companion object {
         const val MAX_FRAGMENTS = 10000
         const val MAX_SESSIONS = 50
+        const val CLEANUP_INTERVAL_MS = 10_000L
 
         fun unpackFragmentPayload(payload: ByteArray): FragmentData? {
             if (payload.size < 13) return null

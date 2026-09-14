@@ -7,13 +7,13 @@ plugins {
 }
 
 android {
-    namespace 'chat.bitchat'
-    compileSdk 34
+    namespace = 'chat.bitchat'
+    compileSdk = 34
 
     defaultConfig {
         applicationId "chat.bitchat"
-        minSdk 26
-        targetSdk 34
+        minSdk = 26
+        targetSdk = 34
         versionCode 2
         versionName "1.1"
 
@@ -34,7 +34,7 @@ android {
         jvmTarget = '17'
     }
     buildFeatures {
-        compose true
+        compose = true
     }
 }
 

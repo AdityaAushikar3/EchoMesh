@@ -27,20 +27,21 @@ class ProfileViewModel @Inject constructor(
             initialValue = null
         )
 
-    fun updateProfile(name: String, bio: String, movies: String, music: String, interests: String, singers: String, career: String) {
+    fun updateProfile(name: String, bio: String, tags: List<String>) {
         viewModelScope.launch {
+            val serializedInterests = tags.joinToString(", ")
             val updated = UserProfile(
                 id = 1,
                 name = name,
                 bio = bio,
-                favoriteMovies = movies,
-                favoriteMusic = music,
-                interests = interests,
-                singers = singers,
-                career = career
+                interests = serializedInterests,
+                favoriteMovies = "",
+                favoriteMusic = "",
+                singers = "",
+                career = ""
             )
             profileRepository.saveProfile(updated)
-            // Re-advertise so nearby phones see the new nickname
+            // Re-advertise so nearby phones see the new profile/nickname
             bluetoothRepository.refreshAdvertisingIdentity()
         }
     }

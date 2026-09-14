@@ -66,8 +66,14 @@ class BluetoothManagerImpl @Inject constructor(
             } else {
                 context.startService(intent)
             }
+        } catch (e: IllegalStateException) {
+            // Usually ForegroundServiceStartNotAllowedException on Android 12+
+            android.util.Log.e("BluetoothManagerImpl", "Foreground service start not allowed in background", e)
+        } catch (e: SecurityException) {
+            // Permission issues
+            android.util.Log.e("BluetoothManagerImpl", "Foreground service denied due to permissions", e)
         } catch (e: Exception) {
-            // Ignore (e.g. background start restrictions during testing)
+            android.util.Log.e("BluetoothManagerImpl", "Failed to start BLE service", e)
         }
     }
 

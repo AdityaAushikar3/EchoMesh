@@ -2,6 +2,7 @@ package chat.bitchat.feature.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import chat.bitchat.core.proximity.ProximityAlertManager
 import chat.bitchat.data.database.BlockedPeer
 import chat.bitchat.data.database.EchoMeshDatabase
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -13,13 +14,25 @@ import javax.inject.Inject
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
-    private val database: EchoMeshDatabase
+    private val database: EchoMeshDatabase,
+    private val proximityAlertManager: ProximityAlertManager
 ) : ViewModel() {
 
     private val blockedPeerDao = database.blockedPeerDao()
 
     val blockedPeers: StateFlow<List<BlockedPeer>> = blockedPeerDao.getAllBlockedPeers()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val proximityAlertsEnabled: StateFlow<Boolean> = proximityAlertManager.enabled
+    val proximityThreshold: StateFlow<Int> = proximityAlertManager.threshold
+
+    fun setProximityAlertsEnabled(enabled: Boolean) {
+        proximityAlertManager.setEnabled(enabled)
+    }
+
+    fun setProximityThreshold(threshold: Int) {
+        proximityAlertManager.setThreshold(threshold)
+    }
 
     fun unblockPeer(peerId: String) {
         viewModelScope.launch {

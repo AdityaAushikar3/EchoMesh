@@ -26,7 +26,10 @@ class BLEMeshService : Service() {
                 )
                 if (state == android.bluetooth.BluetoothAdapter.STATE_ON) {
                     android.util.Log.i("BLEMeshService", "Bluetooth turned ON, restarting networking")
-                    bleMeshManager.ensureReady()
+                    bleMeshManager.ensureReady(forceRestart = true)
+                } else if (state == android.bluetooth.BluetoothAdapter.STATE_OFF || state == android.bluetooth.BluetoothAdapter.STATE_TURNING_OFF) {
+                    android.util.Log.i("BLEMeshService", "Bluetooth turned OFF, stopping networking")
+                    bleMeshManager.stopAll()
                 }
             }
         }
@@ -38,7 +41,12 @@ class BLEMeshService : Service() {
         startForegroundNotification()
         
         val filter = android.content.IntentFilter(android.bluetooth.BluetoothAdapter.ACTION_STATE_CHANGED)
-        registerReceiver(bluetoothStateReceiver, filter)
+        androidx.core.content.ContextCompat.registerReceiver(
+            this,
+            bluetoothStateReceiver,
+            filter,
+            androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
+        )
 
         // Keep GATT server alive with the foreground service
         bleMeshManager.ensureReady()
@@ -93,8 +101,10 @@ class BLEMeshService : Service() {
             }
         } catch (e: SecurityException) {
             android.util.Log.e("BLEMeshService", "Failed to start foreground service: Permission denied", e)
+            stopSelf()
         } catch (e: Exception) {
             android.util.Log.e("BLEMeshService", "Failed to start foreground service", e)
+            stopSelf()
         }
     }
 

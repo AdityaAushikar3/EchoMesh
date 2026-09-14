@@ -10,6 +10,7 @@ data class BitchatPacket(
     var signature: ByteArray? = null,
     var ttl: Byte,
     val route: List<ByteArray>? = null,
+    val routeMetrics: List<Byte>? = null,
     val isRSR: Boolean = false
 ) {
     override fun equals(other: Any?): Boolean {
@@ -39,6 +40,7 @@ data class BitchatPacket(
                 if (!route[i].contentEquals(other.route[i])) return false
             }
         } else if (other.route != null) return false
+        if (routeMetrics != other.routeMetrics) return false
         if (isRSR != other.isRSR) return false
 
         return true
@@ -60,6 +62,7 @@ data class BitchatPacket(
             }
         }
         result = 31 * result + routeHash
+        result = 31 * result + (routeMetrics?.hashCode() ?: 0)
         result = 31 * result + isRSR.hashCode()
         return result
     }
@@ -79,6 +82,7 @@ data class BitchatPacket(
             signature = null,
             ttl = 0,
             route = route,
+            routeMetrics = routeMetrics,
             isRSR = false
         )
         return BinaryProtocol.encode(unsignedPacket, padding = false)

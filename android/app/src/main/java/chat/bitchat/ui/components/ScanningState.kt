@@ -22,42 +22,25 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import chat.bitchat.ui.theme.EchoAccent
+import chat.bitchat.ui.theme.EchoHairline
 import chat.bitchat.ui.theme.EchoSpace
 import chat.bitchat.ui.theme.EchoTextPrimary
+import chat.bitchat.ui.theme.EchoTextSecondary
 import chat.bitchat.ui.theme.EchoTextTertiary
 import chat.bitchat.ui.theme.rememberReducedMotion
-
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.drawscope.rotate
 
 @Composable
 fun ScanningState(
     modifier: Modifier = Modifier,
-    label: String = "Finding people",
+    label: String = "Finding nearby people",
     isScanning: Boolean = true
 ) {
     val reduced = rememberReducedMotion()
-    val transition = rememberInfiniteTransition(label = "scan")
-    val pulse by transition.animateFloat(
-        initialValue = 0.35f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(if (reduced || !isScanning) 1 else 2200, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "pulse"
-    )
-    val alpha by transition.animateFloat(
-        initialValue = 0.45f,
-        targetValue = 0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(if (reduced || !isScanning) 1 else 2200, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "alpha"
-    )
+    val transition = rememberInfiniteTransition(label = "scanningSweep")
     val sweepAngle by transition.animateFloat(
         initialValue = 0f,
         targetValue = 360f,
@@ -68,64 +51,72 @@ fun ScanningState(
         label = "sweepAngle"
     )
 
+    val pulseScale by transition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(if (reduced || !isScanning) 1 else 2500, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "pulseScale"
+    )
+    val pulseAlpha by transition.animateFloat(
+        initialValue = 0.5f,
+        targetValue = 0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(if (reduced || !isScanning) 1 else 2500, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "pulseAlpha"
+    )
+
     val accent = EchoAccent
-    val textTertiary = EchoTextTertiary
+    val hairline = EchoHairline
 
     Column(
         modifier = modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(130.dp)) {
-            Canvas(modifier = Modifier.size(130.dp)) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(110.dp)) {
+            Canvas(modifier = Modifier.size(110.dp)) {
                 val center = Offset(size.width / 2f, size.height / 2f)
                 val maxR = size.minDimension / 2f
 
-                // Concentric radar grid rings
-                listOf(0.35f, 0.68f, 1.0f).forEach { fraction ->
+                // Clean rings
+                listOf(0.35f, 0.70f, 1.0f).forEach { fraction ->
                     drawCircle(
-                        color = accent.copy(alpha = 0.12f),
+                        color = hairline,
                         radius = maxR * fraction,
                         center = center,
                         style = Stroke(width = 1.dp.toPx())
                     )
                 }
 
-                // Expanding pulse ring (only when scanning is ON)
-                if (isScanning && !reduced) {
+                // Expanding pulse ring (when listening)
+                if (isScanning && !reduced && pulseAlpha > 0f) {
                     drawCircle(
-                        color = accent.copy(alpha = alpha * 0.55f),
-                        radius = maxR * pulse,
+                        color = accent.copy(alpha = pulseAlpha * 0.4f),
+                        radius = maxR * pulseScale,
                         center = center,
                         style = Stroke(width = 1.2.dp.toPx())
                     )
                 }
 
-                // Sweeping holographic radar line (only when scanning is ON)
+                // Subtle sweep line
                 if (isScanning && !reduced) {
                     rotate(sweepAngle, pivot = center) {
-                        drawCircle(
-                            brush = Brush.sweepGradient(
-                                colors = listOf(
-                                    Color.Transparent,
-                                    accent.copy(alpha = 0.03f),
-                                    accent.copy(alpha = 0.35f)
-                                ),
-                                center = center
-                            ),
-                            radius = maxR,
-                            center = center
+                        drawLine(
+                            color = accent.copy(alpha = 0.6f),
+                            start = center,
+                            end = Offset(center.x, center.y - maxR),
+                            strokeWidth = 1.5.dp.toPx()
                         )
                     }
                 }
 
-                // Central glowing beacon dot
+                // Center origin dot
                 drawCircle(
-                    color = accent.copy(alpha = if (isScanning) 0.35f else 0.15f),
-                    radius = 8.dp.toPx(),
-                    center = center
-                )
-                drawCircle(
-                    color = if (isScanning) accent else textTertiary,
+                    color = if (isScanning) accent else hairline,
                     radius = 3.5.dp.toPx(),
                     center = center
                 )
@@ -133,34 +124,16 @@ fun ScanningState(
         }
         Spacer(modifier = Modifier.height(EchoSpace.md))
         Text(
-            text = (if (isScanning) label else "Scanner Paused").uppercase(),
-            style = MaterialTheme.typography.labelSmall,
-            color = EchoTextTertiary
+            text = if (isScanning) label else "Scanning Paused",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = EchoTextPrimary
         )
         Spacer(modifier = Modifier.height(EchoSpace.xxs))
         Text(
-            text = if (isScanning) "Listening for people nearby" else "Tap Listen to start scanning",
+            text = if (isScanning) "Listening for offline mesh signals" else "Tap Listen in the top bar to discover peers",
             style = MaterialTheme.typography.bodyMedium,
-            color = EchoTextPrimary.copy(alpha = 0.75f)
+            color = EchoTextSecondary
         )
-    }
-}
-
-@Composable
-fun SoftOrbitRings(
-    modifier: Modifier = Modifier,
-    color: Color = EchoAccent.copy(alpha = 0.12f)
-) {
-    Canvas(modifier = modifier) {
-        val c = Offset(size.width / 2f, size.height / 2f)
-        val max = size.minDimension / 2f
-        listOf(0.28f, 0.52f, 0.78f).forEach { f ->
-            drawCircle(
-                color = color,
-                radius = max * f,
-                center = c,
-                style = Stroke(width = 1.dp.toPx())
-            )
-        }
     }
 }

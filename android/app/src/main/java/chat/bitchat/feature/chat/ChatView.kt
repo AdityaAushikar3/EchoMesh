@@ -47,6 +47,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import chat.bitchat.ui.components.EchoMessageBubble
 import chat.bitchat.ui.components.MessageComposer
@@ -59,6 +60,7 @@ import chat.bitchat.ui.theme.EchoHairline
 import chat.bitchat.ui.theme.EchoRadius
 import chat.bitchat.ui.theme.EchoSpace
 import chat.bitchat.ui.theme.EchoSuccess
+import chat.bitchat.ui.theme.EchoSurface
 import chat.bitchat.ui.theme.EchoTextPrimary
 import chat.bitchat.ui.theme.EchoTextSecondary
 import chat.bitchat.ui.theme.EchoTextTertiary
@@ -105,10 +107,10 @@ fun ChatView(
 
     val isNearby = nearbyRssi != null
     val statusText = when {
-        isBlocked -> "Blocked Node"
+        isBlocked -> "Blocked"
         isNearby && nearbyRssi != null -> "Nearby · ${rssiToMeters(nearbyRssi!!)}m"
         isNearby -> "Nearby"
-        else -> "Out of range"
+        else -> "Mesh Relay"
     }
 
     Column(
@@ -117,9 +119,11 @@ fun ChatView(
             .background(EchoVoid)
             .statusBarsPadding()
     ) {
+        // Chat Header
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .background(EchoSurface)
                 .padding(horizontal = EchoSpace.xs, vertical = EchoSpace.xs),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -127,19 +131,20 @@ fun ChatView(
                 Icon(
                     Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "Back",
-                    tint = EchoTextSecondary
+                    tint = EchoTextPrimary
                 )
             }
             PeerAvatar(
                 name = peerDisplayName,
-                size = 36.dp,
-                ringColor = if (isBlocked) EchoDanger else if (isNearby) EchoAccent else EchoTextTertiary
+                size = 38.dp,
+                ringColor = if (isBlocked) EchoDanger else if (isNearby) EchoAccent else EchoHairline
             )
             Spacer(modifier = Modifier.width(EchoSpace.sm))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = peerDisplayName,
                     style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
                     color = EchoTextPrimary
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -147,21 +152,25 @@ fun ChatView(
                         active = isNearby && !isBlocked,
                         color = if (isBlocked) EchoDanger else if (isNearby) EchoSuccess else EchoTextTertiary
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.width(5.dp))
                     Text(
                         text = statusText,
                         style = MaterialTheme.typography.labelSmall,
-                        color = if (isBlocked) EchoDanger else EchoTextTertiary
+                        color = if (isBlocked) EchoDanger else EchoTextSecondary
                     )
                 }
             }
             Box {
                 IconButton(onClick = { showMenu = true }) {
-                    Icon(Icons.Default.MoreVert, contentDescription = "More", tint = EchoTextSecondary)
+                    Icon(Icons.Default.MoreVert, contentDescription = "Options", tint = EchoTextSecondary)
                 }
-                DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                DropdownMenu(
+                    expanded = showMenu,
+                    onDismissRequest = { showMenu = false },
+                    modifier = Modifier.background(EchoSurface)
+                ) {
                     DropdownMenuItem(
-                        text = { Text("Clear conversation") },
+                        text = { Text("Clear conversation", color = EchoTextPrimary) },
                         onClick = {
                             showMenu = false
                             viewModel.clearChatHistory()
@@ -187,7 +196,14 @@ fun ChatView(
                 }
             }
         }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(EchoHairline)
+        )
 
+        // Messages List
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -198,8 +214,8 @@ fun ChatView(
                 state = listState,
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = EchoSpace.lg),
-                verticalArrangement = Arrangement.spacedBy(EchoSpace.sm),
+                    .padding(horizontal = EchoSpace.md),
+                verticalArrangement = Arrangement.spacedBy(EchoSpace.xs + 2.dp),
                 contentPadding = PaddingValues(vertical = EchoSpace.md)
             ) {
                 itemsIndexed(messages, key = { _, m -> m.id }) { index, message ->
@@ -235,7 +251,7 @@ fun ChatView(
                             }
                         }
                     },
-                    containerColor = EchoAccent,
+                    containerColor = EchoElevated,
                     contentColor = EchoTextPrimary,
                     shape = CircleShape,
                     modifier = Modifier.size(36.dp)
@@ -249,14 +265,13 @@ fun ChatView(
             LinearProgressIndicator(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(1.dp),
+                    .height(2.dp),
                 color = EchoAccent,
                 trackColor = EchoVoid
             )
         }
 
         if (isBlocked) {
-            // Blocked Banner instead of MessageComposer
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -299,7 +314,8 @@ fun ChatView(
                         Text(
                             text = "Unblock",
                             color = EchoAccent,
-                            style = MaterialTheme.typography.labelLarge
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold
                         )
                     }
                 }
@@ -327,12 +343,13 @@ fun ChatView(
                 Text(
                     text = "Block $peerDisplayName?",
                     style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
                     color = EchoTextPrimary
                 )
             },
             text = {
                 Text(
-                    text = "You will no longer receive messages or profile updates from this node across the mesh network.",
+                    text = "You will no longer receive messages or profile updates from this peer across the mesh network.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = EchoTextSecondary
                 )
@@ -345,7 +362,7 @@ fun ChatView(
                         showBlockConfirmDialog = false
                     }
                 ) {
-                    Text("Block", color = EchoDanger)
+                    Text("Block", color = EchoDanger, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
@@ -353,7 +370,7 @@ fun ChatView(
                     Text("Cancel", color = EchoTextSecondary)
                 }
             },
-            containerColor = EchoElevated
+            containerColor = EchoSurface
         )
     }
 }

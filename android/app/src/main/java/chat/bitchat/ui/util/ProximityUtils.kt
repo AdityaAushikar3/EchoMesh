@@ -35,45 +35,77 @@ object InterestDirectory {
 
 private val interestEmojiMap = listOf(
     listOf("music", "song", "band", "audio", "guitar", "piano", "drums", "violin", "keyboard", "flute", "singers", "artists") to "🎸",
-    listOf("code", "coding", "programming", "dev", "software", "ai", "ml", "data science", "cybersecurity", "cloud", "devops", "networking", "blockchain", "engineering", "it") to "💻",
-    listOf("game", "gaming", "esport") to "🎮",
-    listOf("art", "design", "paint", "creative") to "🎨",
+    listOf("code", "coding", "programming", "dev", "software", "ai", "ml", "data science", "cybersecurity", "cloud", "devops", "networking", "blockchain", "engineering", "it", "kotlin", "c++", "rust", "python", "java", "swift", "react") to "💻",
+    listOf("game", "gaming", "esport", "chess") to "🎮",
+    listOf("art", "design", "paint", "creative", "sketching", "drawing") to "🎨",
     listOf("film", "movie", "cinema", "series", "horror", "sci-fi", "thriller", "drama", "action", "comedy") to "🎬",
-    listOf("sport", "fitness", "run", "gym") to "🏃",
-    listOf("food", "cook", "cafe") to "🍜",
+    listOf("sport", "fitness", "run", "gym", "hiking", "cycling", "swimming") to "🏃",
+    listOf("food", "cook", "cafe", "coffee", "baking") to "🍜",
     listOf("travel", "hike", "adventure") to "✈️",
-    listOf("photo", "camera") to "📷",
+    listOf("photo", "camera", "photography") to "📷",
     listOf("book", "read", "writing") to "📚",
     listOf("startup", "founder", "business", "entrepreneurship", "finance", "marketing", "management") to "🚀",
-    listOf("science", "space", "physics") to "🔬"
+    listOf("science", "space", "physics", "astronomy", "math") to "🔬"
 )
 
-fun parseInterests(raw: String?): List<Interest> {
+object InterestMatcher {
+    /**
+     * Canonical comparison key:
+     * - Trims whitespace
+     * - Lowercases
+     * - Collapses internal multiple spaces to a single space
+     * - Unifies common slash and ampersand spacing ("AI / ML" -> "ai/ml")
+     */
+    fun normalize(tag: String): String {
+        return tag.trim()
+            .lowercase()
+            .replace(Regex("\\s+"), " ")
+            .replace(" / ", "/")
+            .replace(" & ", "&")
+    }
+
+    /**
+     * Splits raw text into clean, trimmed, non-empty, deduplicated tags.
+     */
+    fun parseTags(raw: String?, max: Int = 20): List<String> {
+        if (raw.isNullOrBlank()) return emptyList()
+        return raw.split(',', ';', '|', '·', '\n')
+            .map { it.trim() }
+            .filter { it.length >= 2 }
+            .distinctBy { normalize(it) }
+            .take(max)
+    }
+
+    /**
+     * Exact token intersection matching.
+     * Compares normalized keys, preserves User A's display formatting.
+     */
+    fun findMutualTags(mine: List<String>, theirs: List<String>): List<String> {
+        if (mine.isEmpty() || theirs.isEmpty()) return emptyList()
+        val myMap = mine.associateBy { normalize(it) }
+        val theirNormalized = theirs.map { normalize(it) }.toSet()
+        return myMap.filterKeys { it in theirNormalized }.values.toList()
+    }
+}
+
+fun parseInterests(raw: String?, max: Int = 20): List<Interest> {
     if (raw.isNullOrBlank()) return emptyList()
-    return raw.split(',', ';', '|', '·')
-        .map { it.trim() }
-        .filter { it.isNotBlank() }
-        .distinctBy { it.lowercase() }
-        .take(8)
-        .map { token ->
-            val lower = token.lowercase()
-            val emoji = interestEmojiMap.firstOrNull { (keys, _) ->
-                keys.any { key -> lower.contains(key) }
-            }?.second ?: "✦"
-            val label = token.removePrefix(emoji).trim().replaceFirstChar { it.uppercase() }
-            Interest(label = label.ifBlank { token }, emoji = emoji)
-        }
+    val tags = InterestMatcher.parseTags(raw, max)
+    return tags.map { token ->
+        val lower = token.lowercase()
+        val emoji = interestEmojiMap.firstOrNull { (keys, _) ->
+            keys.any { key -> lower.contains(key) }
+        }?.second ?: "✦"
+        Interest(label = token, emoji = emoji)
+    }
 }
 
 fun sharedInterests(mine: List<Interest>, theirs: List<Interest>): List<Interest> {
     if (mine.isEmpty() || theirs.isEmpty()) return emptyList()
-    return theirs.filter { other ->
-        mine.any { self ->
-            self.label.equals(other.label, ignoreCase = true) ||
-                self.label.contains(other.label, ignoreCase = true) ||
-                other.label.contains(self.label, ignoreCase = true)
-        }
-    }
+    val myMap = mine.associateBy { InterestMatcher.normalize(it.label) }
+    val theirMap = theirs.associateBy { InterestMatcher.normalize(it.label) }
+    val mutualKeys = myMap.keys.intersect(theirMap.keys)
+    return mutualKeys.mapNotNull { myMap[it] }
 }
 
 /** Rough BLE distance estimate in meters from RSSI. */
@@ -144,7 +176,6 @@ fun decodePeerRouteId(encoded: String): String {
     logDebug("ProximityUtils", "[IDENTITY_TRACE] decodedPeerId input=$encoded output=$decoded")
     return decoded
 }
-
 
 fun stableAngle(id: String, index: Int, total: Int): Float {
     val hash = abs(id.hashCode() % 360)

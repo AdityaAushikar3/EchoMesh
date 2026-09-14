@@ -7,39 +7,39 @@ import androidx.compose.ui.graphics.Color
 // CompositionLocal to provide dark/light theme state down the layout hierarchy
 val LocalDarkTheme = staticCompositionLocalOf { true }
 
-// Raw Color Constants for Dark Theme (Cyber tactical OLED)
-private val DarkVoid = Color(0xFF07090E)
-private val DarkInk = Color(0xFF0C0F17)
-private val DarkSurface = Color(0xFF101520)
-private val DarkElevated = Color(0xFF161E2E)
-private val DarkHairline = Color(0xFF222D42)
+// Raw Color Constants for Dark Theme (Refined Charcoal & Warm Amber Accent)
+private val DarkVoid = Color(0xFF0E1116)          // Deep clean charcoal background
+private val DarkInk = Color(0xFF141820)           // Surface neutral
+private val DarkSurface = Color(0xFF191F2A)       // Primary card/surface container
+private val DarkElevated = Color(0xFF222A38)      // Elevated components, inputs, buttons
+private val DarkHairline = Color(0xFF2E384A)      // Subtle 1dp structural dividing border
 
-private val DarkTextPrimary = Color(0xFFF4F6FA)
-private val DarkTextSecondary = Color(0xFF9AA3B5)
-private val DarkTextTertiary = Color(0xFF6B7385)
+private val DarkTextPrimary = Color(0xFFF3F4F6)   // Pure high-legibility off-white
+private val DarkTextSecondary = Color(0xFF9CA3AF) // Calm, readable secondary text
+private val DarkTextTertiary = Color(0xFF6B7280)  // Subtle metadata & timestamps
 
-private val DarkAccent = Color(0xFF00F2FE)       // Electric Cyan
-private val DarkAccentSoft = Color(0xFF0072FF)   // Deep Blue
-private val DarkAccentMuted = Color(0xFF0C2448)  // Navy
-private val DarkSuccess = Color(0xFF34D399)     // Warmer mint green (updated from 0xFF00FFA3)
-private val DarkWarning = Color(0xFFFFB000)
-private val DarkDanger = Color(0xFFFF4560)
+private val DarkAccent = Color(0xFFF59E0B)       // Warm Amber (Intentional, approachable, human)
+private val DarkAccentSoft = Color(0xFFD97706)   // Deeper Amber
+private val DarkAccentMuted = Color(0xFF2E220D)  // Muted Amber container
+private val DarkSuccess = Color(0xFF10B981)     // Emerald green for verified link / delivery
+private val DarkWarning = Color(0xFFF59E0B)     // Amber warning
+private val DarkDanger = Color(0xFFEF4444)      // Crimson danger / block
 
-// Raw Color Constants for Light Theme (Sleek Clean Daylight)
-private val LightVoid = Color(0xFFF5F6F8)        // Soft gray-white background
-private val LightInk = Color(0xFFEBEEF4)
+// Raw Color Constants for Light Theme (Clean Modern Daylight)
+private val LightVoid = Color(0xFFF8F9FA)        // Crisp light canvas
+private val LightInk = Color(0xFFF1F3F5)
 private val LightSurface = Color(0xFFFFFFFF)     // Pure white surfaces
-private val LightElevated = Color(0xFFF0F2F6)    // Elevated surface cards
-private val LightHairline = Color(0xFFD5DAE4)    // Slate borders
+private val LightElevated = Color(0xFFEEF0F3)    // Soft gray containers
+private val LightHairline = Color(0xFFDDE1E8)    // Gentle dividers
 
-private val LightTextPrimary = Color(0xFF0F172A)  // Dark Slate / Near Black
-private val LightTextSecondary = Color(0xFF475569)// Muted Slate
-private val LightTextTertiary = Color(0xFF64748B) // Pale Slate
+private val LightTextPrimary = Color(0xFF111827)  // Deep slate near-black
+private val LightTextSecondary = Color(0xFF4B5563)// Slate secondary
+private val LightTextTertiary = Color(0xFF9CA3AF) // Muted tertiary
 
-private val LightAccent = Color(0xFF0284C7)      // Ocean Blue/Cyan for light bg readability
-private val LightAccentSoft = Color(0xFF0369A1)
-private val LightAccentMuted = Color(0xFFE0F2FE) // Very light blue container
-private val LightSuccess = Color(0xFF10B981)     // Warm emerald green
+private val LightAccent = Color(0xFFD97706)      // Deep amber with strong light background contrast
+private val LightAccentSoft = Color(0xFFB45309)
+private val LightAccentMuted = Color(0xFFFEF3C7) // Soft amber container
+private val LightSuccess = Color(0xFF059669)     // Emerald green
 private val LightWarning = Color(0xFFD97706)     // Amber warning
 private val LightDanger = Color(0xFFDC2626)      // Crimson danger
 
@@ -53,7 +53,7 @@ val EchoHairline: Color @Composable get() = if (LocalDarkTheme.current) DarkHair
 val EchoTextPrimary: Color @Composable get() = if (LocalDarkTheme.current) DarkTextPrimary else LightTextPrimary
 val EchoTextSecondary: Color @Composable get() = if (LocalDarkTheme.current) DarkTextSecondary else LightTextSecondary
 val EchoTextTertiary: Color @Composable get() = if (LocalDarkTheme.current) DarkTextTertiary else LightTextTertiary
-val EchoTextOnAccent: Color @Composable get() = if (LocalDarkTheme.current) Color(0xFF07090E) else Color.White
+val EchoTextOnAccent: Color @Composable get() = if (LocalDarkTheme.current) Color(0xFF181205) else Color.White
 
 val EchoAccent: Color @Composable get() = if (LocalDarkTheme.current) DarkAccent else LightAccent
 val EchoAccentSoft: Color @Composable get() = if (LocalDarkTheme.current) DarkAccentSoft else LightAccentSoft
@@ -63,14 +63,14 @@ val EchoSuccess: Color @Composable get() = if (LocalDarkTheme.current) DarkSucce
 val EchoWarning: Color @Composable get() = if (LocalDarkTheme.current) DarkWarning else LightWarning
 val EchoDanger: Color @Composable get() = if (LocalDarkTheme.current) DarkDanger else LightDanger
 
-val EchoYou: Color @Composable get() = if (LocalDarkTheme.current) Color(0xFFE8ECF4) else Color(0xFF334155)
+val EchoYou: Color @Composable get() = if (LocalDarkTheme.current) Color(0xFFE5E7EB) else Color(0xFF374151)
 
-// Static Avatar colors (work beautifully on both light and dark backgrounds)
-val AvatarCoral = Color(0xFFE07A6A)
-val AvatarSage = Color(0xFF6BA88A)
-val AvatarSky = Color(0xFF6A9BCF)
-val AvatarSand = Color(0xFFC4A574)
-val AvatarLilac = Color(0xFF9B8BC4)
-val AvatarSlate = Color(0xFF7A8799)
-val AvatarRose = Color(0xFFC47A96)
-val AvatarTeal = Color(0xFF5FA8A0)
+// Balanced human avatar color palette
+val AvatarSlate = Color(0xFF64748B)
+val AvatarTerracotta = Color(0xFFC25E4A)
+val AvatarMoss = Color(0xFF4D7C5D)
+val AvatarOchre = Color(0xFFB8860B)
+val AvatarDenim = Color(0xFF4A729A)
+val AvatarPlum = Color(0xFF8B5E83)
+val AvatarRust = Color(0xFFA0522D)
+val AvatarSage = Color(0xFF5F8575)

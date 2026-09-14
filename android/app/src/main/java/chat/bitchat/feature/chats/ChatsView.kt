@@ -3,7 +3,6 @@ package chat.bitchat.feature.chats
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,32 +20,36 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import chat.bitchat.ui.components.ChatsEmptyIllustration
 import chat.bitchat.ui.components.EchoEmptyState
+import chat.bitchat.ui.components.MeshStatusPill
 import chat.bitchat.ui.components.PeerAvatar
 import chat.bitchat.ui.components.StatusDot
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material3.Icon
-import androidx.compose.material3.SwipeToDismissBox
-import androidx.compose.material3.SwipeToDismissBoxValue
-import androidx.compose.material3.rememberSwipeToDismissBoxState
 import chat.bitchat.ui.theme.EchoAccent
+import chat.bitchat.ui.theme.EchoDanger
 import chat.bitchat.ui.theme.EchoElevated
+import chat.bitchat.ui.theme.EchoHairline
 import chat.bitchat.ui.theme.EchoRadius
 import chat.bitchat.ui.theme.EchoSpace
 import chat.bitchat.ui.theme.EchoSuccess
+import chat.bitchat.ui.theme.EchoSurface
 import chat.bitchat.ui.theme.EchoTextPrimary
 import chat.bitchat.ui.theme.EchoTextSecondary
 import chat.bitchat.ui.theme.EchoTextTertiary
@@ -77,33 +80,41 @@ fun ChatsView(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "Chats",
-                style = MaterialTheme.typography.headlineMedium,
-                color = EchoTextPrimary
-            )
-            chat.bitchat.ui.components.MeshStatusPill(
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Chats",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = EchoTextPrimary
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "Offline peer-to-peer conversations",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = EchoTextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Spacer(modifier = Modifier.width(EchoSpace.sm))
+            MeshStatusPill(
                 peerCount = nearbyCount,
                 isActive = true
             )
         }
-        Spacer(modifier = Modifier.height(EchoSpace.xs))
-        Text(
-            text = "Conversations with people you've met nearby.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = EchoTextSecondary
-        )
         Spacer(modifier = Modifier.height(EchoSpace.lg))
 
         if (conversations.isEmpty()) {
-            EchoEmptyState(
-                title = "No conversations yet",
-                subtitle = "Find someone in Space and say hello.",
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f)
+                    .weight(1f),
+                contentAlignment = Alignment.Center
             ) {
-                ChatsEmptyIllustration()
+                EchoEmptyState(
+                    title = "No conversations yet",
+                    subtitle = "Tap anyone detected in Space to start a private off-grid chat."
+                )
             }
         } else {
             @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class, androidx.compose.material3.ExperimentalMaterial3Api::class)
@@ -127,24 +138,20 @@ fun ChatsView(
                         state = dismissState,
                         enableDismissFromStartToEnd = false,
                         backgroundContent = {
-                            val color = if (dismissState.dismissDirection == SwipeToDismissBoxValue.EndToStart) {
-                                chat.bitchat.ui.theme.EchoDanger
-                            } else {
-                                Color.Transparent
-                            }
+                            val isDismissing = dismissState.dismissDirection == SwipeToDismissBoxValue.EndToStart
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .clip(RoundedCornerShape(EchoRadius.md))
-                                    .background(color)
+                                    .background(if (isDismissing) EchoDanger else Color.Transparent)
                                     .padding(horizontal = EchoSpace.md),
                                 contentAlignment = Alignment.CenterEnd
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Delete,
-                                    contentDescription = "Delete Conversation",
+                                    contentDescription = "Delete",
                                     tint = Color.White,
-                                    modifier = Modifier.size(24.dp)
+                                    modifier = Modifier.size(22.dp)
                                 )
                             }
                         },
@@ -169,31 +176,26 @@ private fun ConversationRow(
     modifier: Modifier = Modifier
 ) {
     val time = rememberTime(convo.timestamp)
-    val cardBackground = if (convo.isUnread) {
-        EchoElevated.copy(alpha = 0.75f)
-    } else {
-        EchoElevated.copy(alpha = 0.45f)
-    }
 
     Row(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(EchoRadius.md))
-            .background(cardBackground)
+            .background(EchoSurface)
             .border(
                 width = 1.dp,
-                color = if (convo.isUnread) EchoAccent.copy(alpha = 0.35f) else Color.Transparent,
+                color = if (convo.isUnread) EchoAccent.copy(alpha = 0.4f) else EchoHairline,
                 shape = RoundedCornerShape(EchoRadius.md)
             )
             .clickable(onClick = onClick)
-            .padding(horizontal = EchoSpace.md, vertical = EchoSpace.sm),
+            .padding(horizontal = EchoSpace.md, vertical = EchoSpace.sm + 2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         PeerAvatar(
             name = convo.displayName,
             size = 48.dp,
-            highlighted = convo.isUnread || convo.isBlocked,
-            ringColor = if (convo.isBlocked) chat.bitchat.ui.theme.EchoDanger else EchoAccent
+            highlighted = convo.isUnread,
+            ringColor = if (convo.isBlocked) EchoDanger else EchoAccent
         )
         Spacer(modifier = Modifier.width(EchoSpace.sm))
         Column(modifier = Modifier.weight(1f)) {
@@ -208,14 +210,14 @@ private fun ConversationRow(
                     modifier = Modifier.weight(1f, fill = false)
                 )
                 if (convo.isBlocked) {
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = "Blocked",
                         style = MaterialTheme.typography.labelSmall,
-                        color = chat.bitchat.ui.theme.EchoDanger
+                        color = EchoDanger
                     )
                 } else if (convo.isNearby) {
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
                     StatusDot(active = true, color = EchoSuccess)
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
@@ -227,9 +229,10 @@ private fun ConversationRow(
             }
             Spacer(modifier = Modifier.height(2.dp))
             Text(
-                text = if (convo.isUnread) "New message · ${convo.lastMessage}" else convo.lastMessage,
-                style = if (convo.isUnread) MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold) else MaterialTheme.typography.bodySmall,
-                color = if (convo.isUnread) EchoTextPrimary else EchoTextTertiary,
+                text = convo.lastMessage,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (convo.isUnread) FontWeight.SemiBold else FontWeight.Normal,
+                color = if (convo.isUnread) EchoTextPrimary else EchoTextSecondary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
